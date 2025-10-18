@@ -5,7 +5,38 @@ local note1 = {note=700092, tick=10, delta=200}
 local playStatus = {cuePosMs=0}
 local midiAio1 = {}
 
+local genUnits = true
+local genUnitsOrgPos = Engine.Vector(-375, 0, 200)
+
 local track1 = {notes={note1}, cueNoteIdx=1}
+
+function getRandomColorBit()
+    local bit = string.format("%x", UMath:GetRandomInt(0,255))
+    print("getRandomColorBit ", bit)
+    return bit
+end
+
+function getRandomColorRGBA()
+    local color = string.format("#%s%s%sFF", getRandomColorBit(), getRandomColorBit(), getRandomColorBit())
+    print("getRandomColorRGBA ", color)
+    return color
+end
+
+function genUnitsFromNote(midiAio, note)
+    local pos = Engine.Vector(genUnitsOrgPos.x, genUnitsOrgPos.y - note.tickOn * midiAio.timePerBitMs / 1000.0 * 650, genUnitsOrgPos.z - 100)
+    local eid = 0
+    local callback = function(elementId)
+        print("SpawnElement res ", elementId)
+        eid = elementId
+        note.eid = elementId
+        print("SpawnElement eid ", MiscService:Table2JsonStr(note))
+        local color = getRandomColorRGBA()
+        print("SetColor eid ", MiscService:Table2JsonStr(note))
+        print("SetColor CC", color)
+        Element:SetColor(eid, 1, color)
+    end
+    Element:SpawnElement(Element.SPAWN_SOURCE.Config, 1101002001034000, callback, pos, Engine.Rotator(0,0,0), Engine.Vector(10, 1, 1), true)
+end
 
 function playSingleNote(midiAio, note)
     print("playSingleNote 1", MiscService:Table2JsonStr(note))
@@ -45,7 +76,13 @@ function checkAllTracks(midiAio)
                 break
             end
             track.cueNoteIdx=track.cueNoteIdx + 1
-            TimerManager:AddTimer(startDelay, playSingleNote, midiAio, myNote)
+
+            if genUnits then
+                genUnitsFromNote(midiAio, myNote)
+            else
+                TimerManager:AddTimer(startDelay, playSingleNote, midiAio, myNote)
+            end
+            
             -- playSingleNote(midiAio, note)
            
         end
@@ -78,7 +115,7 @@ function GameClient:OnStart()
 
     -- print("GameClient OnStart ", os.tmpname())
     midiAio1 = MiscService:JsonStr2Table(music1)
-    TimerManager:AddTimer(1,playNotes,midiAio1)
+    TimerManager:AddTimer(2, playNotes,midiAio1)
 end
 
 -- 游戏更新
