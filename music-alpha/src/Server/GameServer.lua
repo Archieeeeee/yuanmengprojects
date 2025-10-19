@@ -1,3 +1,4 @@
+local YmTools = require("YmTools")
 
 local GameServer = {
     StartTime = 0, --开始时间
@@ -30,6 +31,10 @@ end
 -- 游戏启动时
 function GameServer:OnStart()
     ServerLog("[GameServer:OnStart]")
+
+    local eventId = System:RegisterEvent(Events.ON_PLAYER_TOUCH_ELEMENT, OnCharacterTouchUnit)
+    print("register eid ", eventId)
+    InitMusic()
 
     self.StartTime = TimerManager:GetTimeSeconds()
     self.GameTime = 0
