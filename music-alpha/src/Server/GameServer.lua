@@ -32,9 +32,13 @@ end
 function GameServer:OnStart()
     ServerLog("[GameServer:OnStart]")
 
+    if not System:IsStandalone() then
+        InitMusic()    
+    end
+    
     local eventId = System:RegisterEvent(Events.ON_PLAYER_TOUCH_ELEMENT, OnCharacterTouchUnit)
     print("register eid ", eventId)
-    InitMusic()
+    
 
     self.StartTime = TimerManager:GetTimeSeconds()
     self.GameTime = 0

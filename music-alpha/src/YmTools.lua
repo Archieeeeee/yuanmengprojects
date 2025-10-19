@@ -4,6 +4,7 @@ local music1="{\"tracks\":[{\"notes\":[],\"nds\":[],\"cueNoteIdx\":0},{\"notes\"
 local note1 = {note=700092, tick=10, delta=200}
 local playStatus = {cuePosMs=0}
 local midiAio1 = {}
+local msgIdPlayNote = 100100
 
 local genUnits = true
 local genUnitsOrgPos = Engine.Vector(-375, 0, 200)
@@ -38,7 +39,7 @@ function genUnitsFromNote(midiAio, note, musicIdx, trackIdx, noteIdx)
 
         CustomProperty:SetCustomProperty(elementId, "musicVec", CustomProperty.PROPERTY_TYPE.Vector, Engine.Vector(0, trackIdx, noteIdx))
     end
-    Element:SpawnElement(Element.SPAWN_SOURCE.Config, 1101002001034000, callback, pos, Engine.Rotator(0,0,0), Engine.Vector(10, 1, 1), true)
+    Element:SpawnElement(Element.SPAWN_SOURCE.Config, 1101002001034000, callback, pos, Engine.Rotator(0,0,0), Engine.Vector(10, 1, 1), false)
 end
 
 
@@ -104,11 +105,13 @@ end
 
 function OnCharacterTouchUnit(characterId, eid)
     print("onCharacterTouchUnit ", characterId, " ", eid)
+    
     local musicVec = CustomProperty:GetCustomProperty(eid,"musicVec", CustomProperty.PROPERTY_TYPE.Vector)
     if musicVec ~= nil then
         -- print("onchar musicvec ", musicVec.y, " ", musicVec.z, " ", MiscService:Table2JsonStr(midiAio1.tracks[musicVec.y].nds[musicVec.z]))
         local note = GetNoteFromData(midiAio1.tracks[musicVec.y].nds[musicVec.z].ds)
-        playSingleNote(midiAio1, note)
+        System:SendToAllClients(msgIdPlayNote, note)
+        -- playSingleNote(midiAio1, note)
     end
     
 end
@@ -122,6 +125,17 @@ function playNotes(midiAio)
     TimerManager:AddLoopTimer(2,checkAllTracks,midiAio)
 end
 
+function OnNotifyPlayNote(msgId, msg)
+    -- print("OnNotifyPlayNote")
+    playSingleNote(midiAio1, msg)
+end
+
+function InitMusicClient()
+    print("InitMusicClient")
+    InitMusic()
+    System:BindNotify(msgIdPlayNote, OnNotifyPlayNote)
+end
+
 function InitMusic() 
     print("InitMusic")
     -- if System:IsClient() then
@@ -129,4 +143,6 @@ function InitMusic()
     -- end
     midiAio1 = MiscService:JsonStr2Table(music1)
     TimerManager:AddTimer(2, playNotes,midiAio1)
+
 end
+

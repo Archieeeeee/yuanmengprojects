@@ -15,7 +15,7 @@ end
 function GameClient:OnStart()
     Log:PrintLog("[GameClient:OnStart]")
 
-    
+    InitMusicClient()
 
     
 end
