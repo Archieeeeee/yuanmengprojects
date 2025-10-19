@@ -12,7 +12,7 @@ local genUnitsOrgPos = Engine.Vector(-375, 0, 200)
 local track1 = {notes={note1}, cueNoteIdx=1}
 
 function getRandomColorBit()
-    local bit = string.format("%x", UMath:GetRandomInt(0,255))
+    local bit = string.format("%x", UMath:GetRandomInt(128,255))
     -- print("getRandomColorBit ", bit)
     return bit
 end
@@ -144,5 +144,10 @@ function InitMusic()
     midiAio1 = MiscService:JsonStr2Table(music1)
     TimerManager:AddTimer(2, playNotes,midiAio1)
 
+    local callback = function(eid)
+        Element:SetSkinParams(eid,{FlowSpeed = 1.0, WaterSpeed=2.0, DisturbSpeed=1.0})
+    end
+
+    Element:SpawnElement(Element.SPAWN_SOURCE.Config, 1103019010001000, callback, genUnitsOrgPos, Engine.Rotator(0,0,0), Engine.Vector(1, 1, 1), false)
 end
 
