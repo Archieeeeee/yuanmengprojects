@@ -25,8 +25,8 @@ end
 
 
 
-function genUnitsFromNote(midiAio, note, trackIdx, noteIdx)
-    local pos = Engine.Vector(genUnitsOrgPos.x, genUnitsOrgPos.y - note.tickOn * midiAio.timePerBitMs / 1000.0 * 650, genUnitsOrgPos.z - 100)
+function genUnitsFromNote(midiAio, note, musicIdx, trackIdx, noteIdx)
+    local pos = Engine.Vector(genUnitsOrgPos.x, genUnitsOrgPos.y - note.tickOn * midiAio.timePerBitMs / 1000.0 * 650, genUnitsOrgPos.z - 400)
     local callback = function(elementId)
         print("SpawnElement res ", elementId)
         note.eid = elementId
@@ -36,7 +36,7 @@ function genUnitsFromNote(midiAio, note, trackIdx, noteIdx)
         -- print("SetColor CC", color)
         Element:SetColor(elementId, 1, color)
 
-        CustomProperty:SetCustomProperty(elementId, "idxVec", CustomProperty.PROPERTY_TYPE.Vector, Engine.Vector(trackIdx, noteIdx, 0))
+        CustomProperty:SetCustomProperty(elementId, "musicVec", CustomProperty.PROPERTY_TYPE.Vector, Engine.Vector(0, trackIdx, noteIdx))
     end
     Element:SpawnElement(Element.SPAWN_SOURCE.Config, 1101002001034000, callback, pos, Engine.Rotator(0,0,0), Engine.Vector(10, 1, 1), true)
 end
@@ -55,6 +55,11 @@ function playSingleNote(midiAio, note)
     -- Audio:PlaySFXAudio2D(500001 + 23, 0.2, 100, 0)
 end
 
+function GetNoteFromData(nd)
+    local myNote = {note=nd[1], tickOn=nd[2], tickOff=nd[3]}
+    return myNote
+end
+
 function checkAllTracks(midiAio)
     print("checkAllTracks 1 ",  TimerManager:GetTimeSeconds(), " ", midiAio.cuePosMs)
     -- TimerManager:AddTimer(1,Audio:PlaySFXAudio2D(500001 + 23, 0.2, 100, 0))
@@ -71,7 +76,7 @@ function checkAllTracks(midiAio)
 
         for i=track.cueNoteIdx + 1, #track.nds do
             local nd = track.nds[i].ds
-            local myNote = {note=nd[1], tickOn=nd[2], tickOff=nd[3]}
+            local myNote = GetNoteFromData(nd)
             print("myNote ", MiscService:Table2JsonStr(myNote))
             local playStartedDelta = TimerManager:GetTimeSeconds() - midiAio.cuePosMs
             local noteStartDelta = myNote.tickOn * midiAio.timePerBitMs / 1000.0
@@ -83,7 +88,7 @@ function checkAllTracks(midiAio)
             track.cueNoteIdx=track.cueNoteIdx + 1
 
             if genUnits then
-                genUnitsFromNote(midiAio, myNote, j, i)
+                genUnitsFromNote(midiAio, myNote, 0, j, i)
             else
                 TimerManager:AddTimer(startDelay, playSingleNote, midiAio, myNote)
             end
@@ -99,6 +104,13 @@ end
 
 function OnCharacterTouchUnit(characterId, eid)
     print("onCharacterTouchUnit ", characterId, " ", eid)
+    local musicVec = CustomProperty:GetCustomProperty(eid,"musicVec", CustomProperty.PROPERTY_TYPE.Vector)
+    if musicVec ~= nil then
+        -- print("onchar musicvec ", musicVec.y, " ", musicVec.z, " ", MiscService:Table2JsonStr(midiAio1.tracks[musicVec.y].nds[musicVec.z]))
+        local note = GetNoteFromData(midiAio1.tracks[musicVec.y].nds[musicVec.z].ds)
+        playSingleNote(midiAio1, note)
+    end
+    
 end
 
 
