@@ -9,18 +9,22 @@ function GameClient:Init()
     System:BindNotify(NetMsg.S2C_ServerNtf, self.OnServerNtf, self)
     System:BindNotify(NetMsg.S2C_ServerAck, self.OnServerAck, self)
     System:BindNotify(NetMsg.S2C_OnReconnected, self.OnReconnected, self)
+
+    -- InitClient()
 end
 
 -- 客户端游戏开始时
 function GameClient:OnStart()
     Log:PrintLog("[GameClient:OnStart]")
 
+    
+    InitClient()
     InitMusicClient()
     -- TimerManager:AddTimer(1, PlaySfx, "starmantwo")
     -- TimerManager:AddTimer(11, PlaySfx, "ending")
     -- TimerManager:AddTimer(21, PlaySfx, "gameover")
     -- TimerManager:AddTimer(31, PlaySfx, "levelcomplete")
-    TimerManager:AddTimer(0, PlayMusic, "yequ", 2)
+    -- TimerManager:AddTimer(0, PlayMusic, "yequ", 2)
     
 end
 

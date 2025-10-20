@@ -1,4 +1,4 @@
-local YmTools = require("YmTools")
+require("MainGame")
 
 local GameServer = {
     StartTime = 0, --开始时间
@@ -26,11 +26,14 @@ function GameServer:Init()
 
     -- 断线重连时，同步当前游戏状态给客户端
     System:RegisterEvent(Events.ON_PLAYER_RECONNECTED, self.OnReconnected, self)
+    RegisterEventsServer()
 end
 
 -- 游戏启动时
 function GameServer:OnStart()
     ServerLog("[GameServer:OnStart]")
+
+    InitServer()
 
     if not System:IsStandalone() then
         InitMusic()    
