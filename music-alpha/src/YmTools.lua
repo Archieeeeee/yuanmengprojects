@@ -6,6 +6,7 @@ local note1 = {note=700092, tick=10, delta=200}
 local midiAio1 = {}
 starStr = "{\"tracks\":[{\"notes\":[],\"nds\":[],\"cueNoteIdx\":0},{\"notes\":[],\"nds\":[{\"ds\":[60,0,220]},{\"ds\":[60,220,440]},{\"ds\":[67,440,660]},{\"ds\":[67,660,880]},{\"ds\":[69,880,1100]},{\"ds\":[69,1100,1320]},{\"ds\":[67,1320,1760]},{\"ds\":[65,1760,1980]},{\"ds\":[65,1980,2200]},{\"ds\":[64,2200,2420]},{\"ds\":[64,2420,2640]},{\"ds\":[62,2640,2860]},{\"ds\":[62,2860,3080]},{\"ds\":[60,3080,3520]}],\"cueNoteIdx\":0}],\"cuePosMs\":0,\"timePerBitMs\":2.2727272727272725}"
 local msgIdPlayNote = 100100
+local flagCheckingMusicAll = false
 
 -- local genUnits = true
 local genUnits = false
@@ -67,9 +68,17 @@ end
 
 function checkAllMusic()
     -- print("checkAllMusic 1", MiscService:Table2JsonStr(musicAll))
+    if flagCheckingMusicAll then
+        return
+    else
+        flagCheckingMusicAll = true
+    end
+
     for name, midiAio in pairs(musicAll) do
         checkMusicTracks(midiAio)
     end
+
+    flagCheckingMusicAll = false
 end
 
 function checkMusicTracks(midiAio)
@@ -175,6 +184,7 @@ function PlayMusic(name, loopTimesVar)
         -- print("PlayMusic music ", MiscService:Table2JsonStr(music))
         musicAll[name] = music
     end
+    checkAllMusic()
 end
 
 function PlaySfx(name)
