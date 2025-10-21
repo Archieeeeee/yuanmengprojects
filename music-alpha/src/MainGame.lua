@@ -1,4 +1,5 @@
 require("YmMusicTools")
+require("YmTools")
 
 local platformId = 229
 local msgIdBlockState = 100115
@@ -20,7 +21,10 @@ function InitServer()
 end
 
 function InitServerTimers() 
-    TimerManager:AddLoopTimer(5, GenBlock)
+    -- TimerManager:AddLoopTimer(5, GenBlock)
+    SystemAddTimerTask(0, 1, RunAllTimerTasks, "1sTasks")
+    AddTimerTask("1sTasks", "genBlock", 0, 5, GenBlock)
+    -- TimerManager:AddLoopTimer(1, RunAllTimerTasks, "1sTasks")
 end
 
 function GetElementState(elementId)
