@@ -90,6 +90,7 @@ function checkMusicTracks(midiAio)
     if midiAio.cuePosMs == 0 then
         midiAio.cuePosMs = TimerManager:GetTimeSeconds()
     end
+    
 
     for j=1,#midiAio.tracks do
         local track = midiAio.tracks[j]
@@ -103,7 +104,7 @@ function checkMusicTracks(midiAio)
             local noteStartDelta = myNote.tickOn * midiAio.timePerBitMs / 1000.0
             local startDelay = noteStartDelta - playStartedDelta
             print("checkAllTracks 3 ", startDelay, " ", playStartedDelta, " ", noteStartDelta)
-            if startDelay > 10 then
+            if (midiAio.genNoteDelay > 0) and (startDelay > midiAio.genNoteDelay) then
                 break
             end
             track.cueNoteIdx=track.cueNoteIdx + 1
@@ -169,10 +170,11 @@ end
 
 function getMusicData(name)
     local varName = string.format("%s%s", name, musicDataPrefix)
-        local musicData = _G[varName]
-        -- print("PlayMusic musicData ", varName, " ", musicData)
-        local music = MiscService:JsonStr2Table(musicData)
-        return music
+    local musicData = _G[varName]
+    -- print("PlayMusic musicData ", varName, " ", musicData)
+    local music = MiscService:JsonStr2Table(musicData)
+    music.genNoteDelay = 10
+    return music
 end
 
 --loopTimes -1 表示一直循环
@@ -189,6 +191,7 @@ end
 
 function PlaySfx(name)
     local music = getMusicData(name)
+    music.genNoteDelay = 0
     checkMusicTracks(music)
 end
 
