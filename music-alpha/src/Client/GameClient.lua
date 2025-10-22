@@ -31,6 +31,7 @@ end
 -- 游戏更新
 function GameClient:OnUpdate()
     OnUpdateFrame(true)
+    UpdateAllObjStates(GetUpdateDeltaTime())
 end
 
 -- 游戏结束

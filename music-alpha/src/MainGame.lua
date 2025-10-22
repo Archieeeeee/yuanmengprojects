@@ -33,13 +33,9 @@ function InitServerTimers()
     -- end)
 end
 
-function UpdateBoss(deltaTime, obj)
-    if obj.state == "init" then
-        obj.state = "move"
-        local cid = obj.id
-        -- TimerManager:AddTimer(1, function ()
-        --     Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "CommonFallBackLoop", Animation.PART_NAME.FullBody)
-        -- end)
+function UpdateBossSync(msg)
+    local cid = msg.obj.id
+    if msg.action == "move" then
         TimerManager:AddTimer(2, function ()
             Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SpearStartAttack", Animation.PART_NAME.FullBody)
         end)
@@ -52,6 +48,19 @@ function UpdateBoss(deltaTime, obj)
     end
 end
 
+function UpdateBoss(deltaTime, obj)
+    -- print("UpdateBoss ", MiscService:Table2JsonStr(obj))
+    if obj.state == "init" then
+        obj.state = "move"
+        local cid = obj.id
+        -- TimerManager:AddTimer(1, function ()
+        --     Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "CommonFallBackLoop", Animation.PART_NAME.FullBody)
+        -- end)
+        PushAction(true, "UpdateBossSync", {action="move", obj=obj})
+        
+    end
+end
+
 function PostGenBoss(msg)
     print("PostGenBoss")
     local cid = msg.cid
@@ -59,10 +68,15 @@ end
 
 function GenBoss()
     local cid = Creature:SpawnCreature(1114000000000002, Element:GetPosition(platformId) + Engine.Vector(0,0,1000), Engine.Vector(0,0,0),1)
-    local obj = AddNewObjState(0, typeBoss, cid, 9, UpdateBoss)
-    obj.lastUpdateTs = GetGameTimeCur()
-    Creature:SetCreatureGravityInfluence(cid, false)
-    Creature:SetPosition(cid, Creature:GetPosition(cid))
+    local obj = AddNewObjState(0, typeBoss, cid, 1, UpdateBoss)
+    -- obj.lastUpdateTs = GetGameTimeCur()
+    
+    TimerManager:AddTimer(2,function ()
+        Creature:SetCreatureGravityInfluence(cid, false)
+        Creature:SetPosition(cid, Creature:GetPosition(cid))
+        -- UpdateAllObjStates(GetUpdateDeltaTime())
+    end)
+    
     -- PushAction(true, "PostGenBoss", {cid = cid})
 end
 

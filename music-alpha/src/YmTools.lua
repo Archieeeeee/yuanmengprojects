@@ -11,7 +11,8 @@ local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3,
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
 local objStates = {[27007]={id=27007, state="move", states={{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}} }}
 
-function OnUpdateTimeState(state)
+function OnUpdateTimeStateSingle(state)
+    local lastGameTime = state.gameTime
     local curTs = TimerManager:GetTimeSeconds()
     local pausedTotal = state.pausedTimeTotal
     if state.paused then
@@ -19,6 +20,8 @@ function OnUpdateTimeState(state)
         state.gameTime = curTs - pausedTotal
     end
     state.gameTime = curTs - pausedTotal
+    --calc deltaTime
+    state.deltaTime = state.gameTime - lastGameTime
 end
 
 --client 和 server的方法分别操作不同的数据,方便取值不同的数据
@@ -28,7 +31,7 @@ function OnUpdateFrame(isClient)
         state = serverTimeState
     end
     
-    OnUpdateTimeState(state)
+    OnUpdateTimeStateSingle(state)
 end
 
 function InitTimeState()
@@ -37,7 +40,7 @@ function InitTimeState()
 end
 
 function GetTimeStateInit()
-    local state = {gameTime=0, paused=false, pauseTs=0, unpauseTs=0, pausedTimeTotal=0}
+    local state = {gameTime=0, paused=false, pauseTs=0, unpauseTs=0, pausedTimeTotal=0, deltaTime=0}
     return state
 end
 
@@ -70,13 +73,12 @@ function PushAction(doSelf, funcName, funcArg)
     end
 end
 
-function GetUpdateDeltaTime(state, gameTime) 
-    if state.LastUpdateTs == 0 then
-        state.LastUpdateTs = gameTime
+function GetUpdateDeltaTime() 
+    if System:IsServer() or System:IsStandalone() then
+        return serverTimeState.deltaTime
+    else
+        return clientTimeState.deltaTime
     end
-    local deltaTime = gameTime - state.LastUpdateTs
-    state.LastUpdateTs = gameTime
-    return deltaTime
 end
 
 --返回运行的总时间长短,游戏暂停的时候这个值不会增长
@@ -112,11 +114,15 @@ function AddNewObjState(groupType, type, id, updateDur, updateFunc)
     return obj
 end
 
-function UpdateAllObjStates(deltaTime) 
+function UpdateAllObjStates(deltaTime)
     for id, obj in pairs(objStates) do
+        local timeCur = GetGameTimeCur()
+        -- print("UpdateAllObjStates ", timeCur, " ", MiscService:Table2JsonStr(obj))
         if not obj.active then
-        elseif (GetGameTimeCur() - obj.lastUpdateTs) < obj.updateDur then
+        elseif (timeCur - obj.lastUpdateTs) < obj.updateDur then
         elseif obj.updateFunc ~= nil then
+            -- print("UpdateAllObjStates updateFunc", MiscService:Table2JsonStr(obj))
+            obj.lastUpdateTs = timeCur
             obj.updateFunc(deltaTime, obj)
         end
     end
