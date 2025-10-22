@@ -3,6 +3,7 @@ require("MainGame")
 local GameServer = {
     StartTime = 0, --开始时间
     GameTime = 0, --游戏时间
+    LastUpdateTs = 0
 }
 
 -- 服务端日志输出，可以选择是否发送给客户端由客户端进行输出，方便联网调试
@@ -67,6 +68,7 @@ end
 function GameServer:OnUpdate()
     -- 当前游戏总时间
     self.GameTime = TimerManager:GetTimeSeconds() - self.StartTime
+    OnUpdateFrame(false)
 
     --每10秒给客户端发送一次广播
     self.ntfCount = self.ntfCount or 0

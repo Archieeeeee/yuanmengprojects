@@ -4,6 +4,9 @@ require("YmTools")
 local platformId = 229
 local msgIdBlockState = 100115
 
+local typeBoss = 10000
+
+
 function CallbackCharCreated(playerId)
     local pos = Element:GetPosition(platformId)
     Character:SetPosition(playerId, pos + Engine.Vector(0, 0, 500))
@@ -11,7 +14,7 @@ end
 
 function InitClient() 
     print("BindNotify InitClient")
-    System:BindNotify(msgIdBlockState, OnClientNotify)
+    BindNotifyAction()
 end
 
 function InitServer() 
@@ -22,7 +25,7 @@ end
 
 function InitServerTimers() 
     -- TimerManager:AddLoopTimer(5, GenBlock)
-    SystemAddTimerTask(0, 1, RunAllTimerTasks, "1sTasks")
+    AddLoopTimerWithInit(0, 1, RunAllTimerTasks, "1sTasks")
     AddTimerTask("1sTasks", "genBlock", 0, 5, GenBlock)
     AddTimerTask("1sTasks", "genBoss", 0, 30, GenBoss)
     -- AddTimerTask("1sTasks", "sfxTest", 3, 60, function ()
@@ -30,21 +33,37 @@ function InitServerTimers()
     -- end)
 end
 
+function UpdateBoss(deltaTime, obj)
+    if obj.state == "init" then
+        obj.state = "move"
+        local cid = obj.id
+        -- TimerManager:AddTimer(1, function ()
+        --     Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "CommonFallBackLoop", Animation.PART_NAME.FullBody)
+        -- end)
+        TimerManager:AddTimer(2, function ()
+            Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SpearStartAttack", Animation.PART_NAME.FullBody)
+        end)
+        TimerManager:AddTimer(2.7, function ()
+            TimerManager:AddLoopTimer(1, function ()
+                Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SpearAttack", Animation.PART_NAME.FullBody)
+            end)
+        end)
+        Creature:DestroyByTime(cid,29)
+    end
+end
+
+function PostGenBoss(msg)
+    print("PostGenBoss")
+    local cid = msg.cid
+end
+
 function GenBoss()
     local cid = Creature:SpawnCreature(1114000000000002, Element:GetPosition(platformId) + Engine.Vector(0,0,1000), Engine.Vector(0,0,0),1)
+    local obj = AddNewObjState(0, typeBoss, cid, 9, UpdateBoss)
+    obj.lastUpdateTs = GetGameTimeCur()
     Creature:SetCreatureGravityInfluence(cid, false)
-    -- TimerManager:AddTimer(1, function ()
-    --     Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "CommonFallBackLoop", Animation.PART_NAME.FullBody)
-    -- end)
-    TimerManager:AddTimer(2, function ()
-        Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SpearStartAttack", Animation.PART_NAME.FullBody)
-    end)
-    TimerManager:AddTimer(2.7, function ()
-        TimerManager:AddLoopTimer(1, function ()
-            Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SpearAttack", Animation.PART_NAME.FullBody)
-        end)
-    end)
-    Creature:DestroyByTime(cid,29)
+    Creature:SetPosition(cid, Creature:GetPosition(cid))
+    -- PushAction(true, "PostGenBoss", {cid = cid})
 end
 
 function GetElementState(elementId)
@@ -119,11 +138,12 @@ end
 
 function GenBlock() 
     local callback = function(elementId)
-        print("SpawnElement res ", elementId)
+        ServerLog("GenBlock res ", elementId)
         local color = getRandomColorRGBA()
         local state = BuildBlockState(elementId, color)
-        System:SendToAllClients(msgIdBlockState, state)
-        SyncElementState(state)
+        PushAction(true, "SyncElementState", state)
+        -- System:SendToAllClients(msgIdBlockState, state)
+        -- SyncElementState(state)
         Element:DestroyByTime(elementId, 15)
 
         -- CustomProperty:SetCustomProperty(elementId, "musicVec", CustomProperty.PROPERTY_TYPE.Vector, Engine.Vector(0, trackIdx, noteIdx))

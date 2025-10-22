@@ -20,6 +20,7 @@ local GameClient = require "Client.GameClient"
 -- 初始化
 GameServer:Init()
 GameClient:Init()
+InitTimeState()
 
 -- 客户端游戏更新
 local function UpdateClient()

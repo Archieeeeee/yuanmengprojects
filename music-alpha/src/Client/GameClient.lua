@@ -30,6 +30,7 @@ end
 
 -- 游戏更新
 function GameClient:OnUpdate()
+    OnUpdateFrame(true)
 end
 
 -- 游戏结束
