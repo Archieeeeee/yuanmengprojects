@@ -20,11 +20,11 @@ function GameClient:OnStart()
     
     InitClient()
     InitMusicClient()
-    -- TimerManager:AddTimer(1, PlaySfx, "starmantwo")
-    -- TimerManager:AddTimer(11, PlaySfx, "ending")
-    -- TimerManager:AddTimer(21, PlaySfx, "gameover")
-    -- TimerManager:AddTimer(31, PlaySfx, "levelcomplete")
-    -- TimerManager:AddTimer(0, PlayMusic, "yequ", 2)
+    -- TimerManager:AddTimer(1, PlaySfx, "starmantwo", "piano")
+    -- TimerManager:AddTimer(11, PlaySfx, "ending", "piano")
+    -- TimerManager:AddTimer(21, PlaySfx, "gameover", "piano")
+    -- TimerManager:AddTimer(31, PlaySfx, "levelcomplete", "piano")
+    TimerManager:AddTimer(0, PlayMusic, "heartgoon", "piano", 2)
     
 end
 

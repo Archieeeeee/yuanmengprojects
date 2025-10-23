@@ -7,6 +7,7 @@ local midiAio1 = {}
 starStr = "{\"tracks\":[{\"notes\":[],\"nds\":[],\"cueNoteIdx\":0},{\"notes\":[],\"nds\":[{\"ds\":[60,0,220]},{\"ds\":[60,220,440]},{\"ds\":[67,440,660]},{\"ds\":[67,660,880]},{\"ds\":[69,880,1100]},{\"ds\":[69,1100,1320]},{\"ds\":[67,1320,1760]},{\"ds\":[65,1760,1980]},{\"ds\":[65,1980,2200]},{\"ds\":[64,2200,2420]},{\"ds\":[64,2420,2640]},{\"ds\":[62,2640,2860]},{\"ds\":[62,2860,3080]},{\"ds\":[60,3080,3520]}],\"cueNoteIdx\":0}],\"cuePosMs\":0,\"timePerBitMs\":2.2727272727272725}"
 local msgIdPlayNote = 100100
 local flagCheckingMusicAll = false
+local instruments = {piano={min=500001, max=500072}, pianob={min=500101, max=500160}, guitar={min=510001, max=510048}}
 
 -- local genUnits = true
 local genUnits = false
@@ -57,7 +58,16 @@ function playSingleNote(midiAio, note)
     --500014
     -- local noteRemap = math.floor(note.note / 128.0 * 128)
     local noteRemap = note.note - 40 + 500014
-    Audio:PlaySFXAudio2D(math.min(noteRemap, 500072), durationNote, 100, 0)
+    local ins = instruments[midiAio.ins]
+    if midiAio.ins == "pianob" then
+        noteRemap = note.note + ins.min - 40
+    elseif midiAio.ins == "guitar" then
+        noteRemap = note.note + ins.min - 40
+    end
+    noteRemap = math.min(noteRemap, ins.max)
+    noteRemap = math.max(noteRemap, ins.min)
+    
+    Audio:PlaySFXAudio2D(noteRemap, durationNote, 100, 0)
     -- Audio:PlaySFXAudio2D(500001 + 23, 0.2, 100, 0)
 end
 
@@ -174,11 +184,12 @@ function getMusicData(name)
     -- print("PlayMusic musicData ", varName, " ", musicData)
     local music = MiscService:JsonStr2Table(musicData)
     music.genNoteDelay = 10
+    music.ins = "piano"
     return music
 end
 
 --loopTimes -1 表示一直循环
-function PlayMusic(name, loopTimesVar)
+function PlayMusic(name, instrument, loopTimesVar)
     local music = musicAll[name]
     if music == nil then
         music = getMusicData(name)
@@ -186,12 +197,14 @@ function PlayMusic(name, loopTimesVar)
         -- print("PlayMusic music ", MiscService:Table2JsonStr(music))
         musicAll[name] = music
     end
+    music.ins = instrument
     checkAllMusic()
 end
 
-function PlaySfx(name)
+function PlaySfx(name, instrument)
     local music = getMusicData(name)
     music.genNoteDelay = 0
+    music.ins = instrument
     checkMusicTracks(music)
 end
 
