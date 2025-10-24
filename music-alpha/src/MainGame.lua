@@ -78,6 +78,16 @@ function GenBoss()
 
     SetObjState(obj, "move.startMove", -1, -1, 2)
     SetObjStateNext(obj, "move.startMove", "move", "toMove")
+    SetObjState(obj, "move.toMove", -1, 0, 2)
+    SetObjStateNext(obj, "move.toMove", "move", "moveOver")
+
+    StartObjStateByName(obj, "move", "startMove")
+
+    print("GenBoss after ", MiscService:Table2JsonStr(obj))
+
+    -- TimerManager:AddTimer(3,function ()
+    --     CheckAllObjStates(0.1)
+    -- end)
     
     TimerManager:AddTimer(2,function ()
         -- Creature:SetCreatureGravityInfluence(cid, false)

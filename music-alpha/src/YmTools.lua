@@ -54,7 +54,7 @@ function AddObjState(obj, name)
     for index, name in ipairs(ss) do
         child = parent["states"][name]
         if child == nil then
-            child = {cur = "", startTs = GetGameTimeCur(), endTs = 0, dur=0, nextStates = {}, states={} }
+            child = {cur = "", startTs = 0, endTs = 0, dur=0, nextStates = {}, states={} }
             parent["states"][name] = child
         end
         parent = child
@@ -91,30 +91,50 @@ function SetObjState(obj, name, startTs, endTs, dur)
 end
 
 function SetObjStateNext(obj, name, key, value)
+    print("SetObjStateNext ", name)
     local state = GetObjState(obj, name)
     state.nextStates[key] = value
+    print("SetObjStateNext after ", name, " ", MiscService:Table2JsonStr(obj))
+end
+
+function StartObjStateByName(obj, name, value)
+    local state = GetObjState(obj, name)
+    StartObjStateDirect(state, value)
+end
+
+function StartObjStateDirect(state, value)
+    state.states[value].startTs = GetGameTimeCur()
+    state.cur = value
 end
 
 function CheckAllObjStates(deltaTime)
     for id, obj in pairs(objStates) do
-        CheckObjStates(obj, deltaTime)
+        if obj.active then
+            CheckObjStates(obj, deltaTime)
+        end
     end
 end
 
 function CheckObjStates(obj, deltaTime)
-    if obj.objStates ~= nil then
-        for key, childState in pairs(obj.objStates.states) do
+    -- print("CheckObjStates ", MiscService:Table2JsonStr(obj))
+    if (obj.states ~= nil) and (obj.states.objStates ~= nil) then
+        for key, childState in pairs(obj.states.objStates.states) do
             CheckSingleObjState(childState, deltaTime, obj)
         end
     end
 end
 
 function CheckSingleObjState(state, deltaTime, obj)
+    --检查当前状态名称对应的状态
     if (state.cur ~= nil) and (state.cur ~= "") then
-        if GetGameTimeCur() - state.startTs > state.dur then
-            UpdateObjStateNext(state.nextStates, obj)
+        local childState = state.states[state.cur]
+        if childState.startTs > 0 and childState.endTs == 0 then
+            if GetGameTimeCur() - childState.startTs > childState.dur then
+                UpdateObjStateNext(childState, obj)
+            end
         end
     end
+    
     if state.states ~= nil then
         for key, childState in pairs(state.states) do
             CheckSingleObjState(childState, deltaTime, obj)
@@ -142,13 +162,14 @@ function string:split(sep, pattern)
 end
 
 -- {["attack"]="startAttack", ["lookState.childState"]="goNext"}
-function UpdateObjStateNext(nextStates, obj)
+function UpdateObjStateNext(stateArg, obj)
+    print("UpdateObjStateNext ", MiscService:Table2JsonStr(stateArg))
+    stateArg.endTs = GetGameTimeCur()
+    local nextStates = stateArg.nextStates
     if nextStates ~= nil then
         for stateName, stateValue in pairs(nextStates) do
-            local state = GetObjState(obj, stateName)
-            --赋值
-            state.cur = stateValue
-        end        
+            StartObjStateByName(obj, stateName, stateValue)
+        end
     end
 end
 
