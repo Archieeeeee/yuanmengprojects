@@ -51,7 +51,7 @@ end
 
 function UpdateBoss(deltaTime, obj)
     -- print("UpdateBoss ", MiscService:Table2JsonStr(obj))
-    if GetObjState(obj, "move").cur == "toMove" then
+    if IsObjStateCurAndInit(obj, "move", "toMove") then
         obj.state = "move"
         local cid = obj.id
         -- TimerManager:AddTimer(1, function ()
@@ -70,18 +70,22 @@ end
 function GenBoss()
     local cid = Creature:SpawnCreature(1114000000000002, Element:GetPosition(platformId) + Engine.Vector(0,0,1000), Engine.Vector(0,0,0),1)
     local obj = AddNewObj(0, typeBoss, cid, 1, UpdateBoss)
-    -- obj.lastUpdateTs = GetGameTimeCur()
-    AddObjState(obj, "move.startMove")
+    -- AddObjState(obj, "move.startMove")
+    -- AddObjState(obj, "move.toMove")
+    -- AddObjState(obj, "move.moveOver")
+    -- AddObjState(obj, "attack")
+
+    -- SetObjState(obj, "move.startMove", -1, -1, 2)
+    -- SetObjStateNext(obj, "move.startMove", "move", "toMove")
+    -- SetObjState(obj, "move.toMove", -1, 0, 2)
+    -- SetObjStateNext(obj, "move.toMove", "move", "moveOver")
+
+    -- StartObjStateByName(obj, "move", "startMove")
+
     AddObjState(obj, "move.toMove")
-    AddObjState(obj, "move.moveOver")
-    AddObjState(obj, "attack")
 
-    SetObjState(obj, "move.startMove", -1, -1, 2)
-    SetObjStateNext(obj, "move.startMove", "move", "toMove")
-    SetObjState(obj, "move.toMove", -1, 0, 2)
-    SetObjStateNext(obj, "move.toMove", "move", "moveOver")
-
-    StartObjStateByName(obj, "move", "startMove")
+    SetObjState(obj, "move.toMove", -1, -1, 2)
+    StartObjStateByName(obj, "move", "toMove")
 
     print("GenBoss after ", MiscService:Table2JsonStr(obj))
 

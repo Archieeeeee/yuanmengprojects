@@ -54,13 +54,43 @@ function AddObjState(obj, name)
     for index, name in ipairs(ss) do
         child = parent["states"][name]
         if child == nil then
-            child = {cur = "", startTs = 0, endTs = 0, dur=0, nextStates = {}, states={} }
+            child = {cur = "", startTs = 0, endTs = 0, dur=0, inited = false, nextStates = {}, states={} }
             parent["states"][name] = child
         end
         parent = child
     end
 
     print("after AddObjState ", MiscService:Table2JsonStr(obj))
+end
+
+-- move.toMove
+function CanObjStateInit(obj, name)
+    local state = GetObjState(obj, name)
+    if state == nil then
+        return false
+    else
+        if state.inited then
+            return false
+        else
+            state.inited = true
+            return true
+        end
+    end
+end
+
+-- move   toMove
+function IsObjStateCurAndInit(obj, name, value)
+    return IsObjStateCur(obj, name, value) and CanObjStateInit(obj, string.format("%s.%s", name, value))
+end
+
+-- move   toMove
+function IsObjStateCur(obj, name, value)
+    local state = GetObjState(obj, name)
+    if state == nil then
+        return false
+    else
+        return (state.cur == value)
+    end
 end
 
 function GetObjState(obj, name)
@@ -72,6 +102,9 @@ function GetObjState(obj, name)
     -- lookState  childState
     for index, name in ipairs(ss) do
         state = state["states"][name]
+        if state == nil then
+            return nil
+        end
     end
     return state
 end
@@ -103,7 +136,10 @@ function StartObjStateByName(obj, name, value)
 end
 
 function StartObjStateDirect(state, value)
-    state.states[value].startTs = GetGameTimeCur()
+    local childState = state.states[value]
+    childState.startTs = GetGameTimeCur()
+    childState.endTs = 0
+    childState.inited = false
     state.cur = value
 end
 
