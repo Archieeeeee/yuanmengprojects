@@ -36,50 +36,119 @@ local testStates = {
 }
 local objStates = {[27007]={id=27007, state="move", states=testStates }}
 
-function CheckObjStates(obj, deltaTime)
-    for key, childState in pairs(obj.states) do
-        CheckSingleObjState(childState, deltaTime)
+--name 是空表示添加到obj  "xx.aa.cccc"
+function AddObjState(obj, name)
+    print("before AddObjState ", name, " ", MiscService:Table2JsonStr(obj))
+    if name == nil then
+        name = "objStates"
+    else
+        name = string.format("objStates.%s", name)
+    end
+    
+    print("beforeAAA AddObjState ", name, " ", MiscService:Table2JsonStr(obj))
+    local ss = string.split(name, ".")
+    print("beforeBBB AddObjState ", MiscService:Table2JsonStr(ss), " ", MiscService:Table2JsonStr(obj))
+    local parent = obj
+    local child = nil
+    -- lookState  childState
+    for index, name in ipairs(ss) do
+        child = parent["states"][name]
+        if child == nil then
+            child = {cur = "", startTs = GetGameTimeCur(), endTs = 0, dur=0, nextStates = {}, states={} }
+            parent["states"][name] = child
+        end
+        parent = child
+    end
+
+    print("after AddObjState ", MiscService:Table2JsonStr(obj))
+end
+
+function GetObjState(obj, name)
+    name = string.format("objStates.%s", name)
+    -- print("beforeAAA GetObjState ", name, " ", MiscService:Table2JsonStr(obj))
+    local ss = string.split(name, ".")
+    -- print("beforeBBB GetObjState ", MiscService:Table2JsonStr(ss), " ", MiscService:Table2JsonStr(obj))
+    local state = obj
+    -- lookState  childState
+    for index, name in ipairs(ss) do
+        state = state["states"][name]
+    end
+    return state
+end
+
+function SetObjState(obj, name, startTs, endTs, dur)
+    local state = GetObjState(obj, name)
+    if startTs >= 0 then
+        state.startTs = startTs
+    end
+    if endTs >= 0 then
+        state.endTs = endTs
+    end
+    if dur >= 0 then
+        state.dur = dur
+    end
+    print("after SetObjState ", MiscService:Table2JsonStr(obj))
+end
+
+function SetObjStateNext(obj, name, key, value)
+    local state = GetObjState(obj, name)
+    state.nextStates[key] = value
+end
+
+function CheckAllObjStates(deltaTime)
+    for id, obj in pairs(objStates) do
+        CheckObjStates(obj, deltaTime)
     end
 end
 
-function CheckSingleObjState(state, deltaTime)
+function CheckObjStates(obj, deltaTime)
+    if obj.objStates ~= nil then
+        for key, childState in pairs(obj.objStates.states) do
+            CheckSingleObjState(childState, deltaTime, obj)
+        end
+    end
+end
+
+function CheckSingleObjState(state, deltaTime, obj)
     if (state.cur ~= nil) and (state.cur ~= "") then
-        if GetGameTimeCur > state.endTs then
-            SetObjState(state.nextStates)
+        if GetGameTimeCur() - state.startTs > state.dur then
+            UpdateObjStateNext(state.nextStates, obj)
         end
     end
     if state.states ~= nil then
         for key, childState in pairs(state.states) do
-            CheckSingleObjState(childState, deltaTime)
+            CheckSingleObjState(childState, deltaTime, obj)
         end
     end
 end
 
-function string:split(delimiter)
-  local result = { }
-  local from  = 1
-  local delim_from, delim_to = string.find( self, delimiter, from  )
-  while delim_from do
-    table.insert( result, string.sub( self, from , delim_from-1 ) )
-    from  = delim_to + 1
-    delim_from, delim_to = string.find( self, delimiter, from  )
-  end
-  table.insert( result, string.sub( self, from  ) )
-  return result
+
+function string:split(sep, pattern)
+	if sep == "" then
+		return self:totable()
+	end
+	local rs = {}
+	local previdx = 1
+	while true do
+		local startidx, endidx = self:find(sep, previdx, not pattern)
+		if not startidx then
+			table.insert(rs, self:sub(previdx))
+			break
+		end
+		table.insert(rs, self:sub(previdx, startidx - 1))
+		previdx = endidx + 1
+	end
+	return rs
 end
 
 -- {["attack"]="startAttack", ["lookState.childState"]="goNext"}
-function SetObjState(nextStates, objStates)
-    for stateName, stateValue in pairs(nextStates) do
-        -- "lookState.childState"
-        local ss = string:split(stateName, ".")
-        local state = objStates
-        -- lookState  childState
-        for index, name in ipairs(ss) do
-            state = state[name]
-        end
-        --赋值
-        state.cur = stateValue
+function UpdateObjStateNext(nextStates, obj)
+    if nextStates ~= nil then
+        for stateName, stateValue in pairs(nextStates) do
+            local state = GetObjState(obj, stateName)
+            --赋值
+            state.cur = stateValue
+        end        
     end
 end
 
@@ -103,7 +172,10 @@ function OnUpdateFrame(isClient)
         state = serverTimeState
     end
     
+    --gen delta
     OnUpdateTimeStateSingle(state)
+    --delta ready
+    CheckAllObjStates(state.deltaTime)
 end
 
 function InitTimeState()
@@ -180,8 +252,9 @@ function DoAction(msg)
     _G[msg.funcName](msg.funcArg)
 end
 
-function AddNewObjState(groupType, type, id, updateDur, updateFunc)
+function AddNewObj(groupType, type, id, updateDur, updateFunc)
     local obj = {id=id, group=groupType, type=type, updateDur=updateDur, updateFunc=updateFunc, lastUpdateTs=0, active=true, createTs=GetGameTimeCur(), states={}}
+    AddObjState(obj, nil)
     objStates[id] = obj
     return obj
 end
