@@ -24,7 +24,7 @@ function GameClient:OnStart()
     -- TimerManager:AddTimer(11, PlaySfx, "ending", "piano")
     -- TimerManager:AddTimer(21, PlaySfx, "gameover", "piano")
     -- TimerManager:AddTimer(31, PlaySfx, "levelcomplete", "piano")
-    TimerManager:AddTimer(0, PlayMusic, "heartgoon", "piano", 2)
+    TimerManager:AddTimer(0, PlayMusic, "smb", "piano", 2)
     
 end
 

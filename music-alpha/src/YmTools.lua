@@ -9,7 +9,79 @@ local serverTimeState = {}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
-local objStates = {[27007]={id=27007, state="move", states={{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}} }}
+
+local testStates = {
+    move = {
+        cur = "idle", startTs = 0, endTs = 0, nextStates = {},
+        states = {
+            idle = {
+                cur = "", startTs = 0, endTs = 0, nextStates = {["move"]="moving", ["attack"]="startAttack"}
+            },
+            moving =  {
+                cur = "", startTs = 0, endTs = 0, nextStates = {}
+            }
+        },
+    },
+    attack = {
+        cur = "", startTs = 0, endTs = 0, nextStates = {},
+        states = {
+            startAttack = {
+                cur = "", startTs = 0, endTs = 0, nextStates = {["attack"]="startAttack", ["lookState.childState"]="goNext"}
+            },
+            endAttack =  {
+                cur = "", startTs = 0, endTs = 0, nextStates = {}
+            }
+        },
+    }
+}
+local objStates = {[27007]={id=27007, state="move", states=testStates }}
+
+function CheckObjStates(obj, deltaTime)
+    for key, childState in pairs(obj.states) do
+        CheckSingleObjState(childState, deltaTime)
+    end
+end
+
+function CheckSingleObjState(state, deltaTime)
+    if (state.cur ~= nil) and (state.cur ~= "") then
+        if GetGameTimeCur > state.endTs then
+            SetObjState(state.nextStates)
+        end
+    end
+    if state.states ~= nil then
+        for key, childState in pairs(state.states) do
+            CheckSingleObjState(childState, deltaTime)
+        end
+    end
+end
+
+function string:split(delimiter)
+  local result = { }
+  local from  = 1
+  local delim_from, delim_to = string.find( self, delimiter, from  )
+  while delim_from do
+    table.insert( result, string.sub( self, from , delim_from-1 ) )
+    from  = delim_to + 1
+    delim_from, delim_to = string.find( self, delimiter, from  )
+  end
+  table.insert( result, string.sub( self, from  ) )
+  return result
+end
+
+-- {["attack"]="startAttack", ["lookState.childState"]="goNext"}
+function SetObjState(nextStates, objStates)
+    for stateName, stateValue in pairs(nextStates) do
+        -- "lookState.childState"
+        local ss = string:split(stateName, ".")
+        local state = objStates
+        -- lookState  childState
+        for index, name in ipairs(ss) do
+            state = state[name]
+        end
+        --赋值
+        state.cur = stateValue
+    end
+end
 
 function OnUpdateTimeStateSingle(state)
     local lastGameTime = state.gameTime
@@ -109,7 +181,7 @@ function DoAction(msg)
 end
 
 function AddNewObjState(groupType, type, id, updateDur, updateFunc)
-    local obj = {id=id, group=groupType, type=type, updateDur=updateDur, updateFunc=updateFunc, lastUpdateTs=0, active=true, createTs=GetGameTimeCur(), state="init", states={}}
+    local obj = {id=id, group=groupType, type=type, updateDur=updateDur, updateFunc=updateFunc, lastUpdateTs=0, active=true, createTs=GetGameTimeCur(), states={}}
     objStates[id] = obj
     return obj
 end
