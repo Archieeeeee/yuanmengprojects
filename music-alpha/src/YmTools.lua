@@ -34,7 +34,7 @@ local testStates = {
         },
     }
 }
-local objStates = {[27007]={id=27007, state="move", states=testStates }}
+local objectsAio = {[27007]={id=27007, state="move", states=testStates }}
 
 --name 是空表示添加到obj  "xx.aa.cccc"
 function AddObjState(obj, name)
@@ -108,7 +108,7 @@ function StartObjStateDirect(state, value)
 end
 
 function CheckAllObjStates(deltaTime)
-    for id, obj in pairs(objStates) do
+    for id, obj in pairs(objectsAio) do
         if obj.active then
             CheckObjStates(obj, deltaTime)
         end
@@ -276,12 +276,12 @@ end
 function AddNewObj(groupType, type, id, updateDur, updateFunc)
     local obj = {id=id, group=groupType, type=type, updateDur=updateDur, updateFunc=updateFunc, lastUpdateTs=0, active=true, createTs=GetGameTimeCur(), states={}}
     AddObjState(obj, nil)
-    objStates[id] = obj
+    objectsAio[id] = obj
     return obj
 end
 
 function UpdateAllObjStates(deltaTime)
-    for id, obj in pairs(objStates) do
+    for id, obj in pairs(objectsAio) do
         local timeCur = GetGameTimeCur()
         -- print("UpdateAllObjStates ", timeCur, " ", MiscService:Table2JsonStr(obj))
         if not obj.active then
