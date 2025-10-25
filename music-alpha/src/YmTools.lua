@@ -232,6 +232,7 @@ function OnUpdateFrame(isClient)
     --gen delta
     OnUpdateTimeStateSingle(state)
     --delta ready
+    UpdateAllObjects(GetUpdateDeltaTime())
     CheckAllObjStates(state.deltaTime)
 end
 
@@ -309,18 +310,34 @@ function DoAction(msg)
     _G[msg.funcName](msg.funcArg)
 end
 
-function AddNewObj(groupType, type, id, updateDur, updateFunc)
-    local obj = {id=id, group=groupType, type=type, updateDur=updateDur, updateFunc=updateFunc, lastUpdateTs=0, active=true, createTs=GetGameTimeCur(), states={}}
+function AddNewObj(groupType, type, id, updateDur, updateFunc, lifeDur, destroyFunc)
+    local obj = {id=id, group=groupType, type=type, updateDur=updateDur, updateFunc=updateFunc, lastUpdateTs=0,
+        lifeDur=lifeDur, destroyFunc=destroyFunc, active=true, createTs=GetGameTimeCur(), states={}}
     AddObjState(obj, nil)
     objectsAio[id] = obj
     return obj
 end
 
-function UpdateAllObjStates(deltaTime)
+function UpdateAllObjects(deltaTime)
+    -- remove unactive
+    local removeIds = {}
+    for id, obj in pairs(objectsAio) do
+        if not obj.active then
+            table.insert(removeIds, id)
+        end
+    end
+    for index, value in ipairs(removeIds) do
+        print("remove unactive object ", id)
+        objectsAio[value] = nil
+    end
+    -- check active
     for id, obj in pairs(objectsAio) do
         local timeCur = GetGameTimeCur()
         -- print("UpdateAllObjStates ", timeCur, " ", MiscService:Table2JsonStr(obj))
         if not obj.active then
+        elseif obj.lifeDur >= 0 and (timeCur - obj.createTs > obj.lifeDur) then
+            obj.active = false
+            obj.destroyFunc(deltaTime, obj)
         elseif (timeCur - obj.lastUpdateTs) < obj.updateDur then
         elseif obj.updateFunc ~= nil then
             -- print("UpdateAllObjStates updateFunc", MiscService:Table2JsonStr(obj))
@@ -382,4 +399,17 @@ end
 
 function SetTaskActive(name, activeTo)
     timerTaskState[name].active = activeTo
+end
+
+function PlayThenStopAnim(delay, type, id, name, partname, stopDelay, stopBlendDur)
+    if delay == 0 then
+        Animation:PlayAnim(type, id, name, partname)
+    else
+        TimerManager:AddTimer(delay, function ()
+            Animation:PlayAnim(type, id, name, partname)
+        end)
+    end
+    TimerManager:AddTimer(stopDelay, function ()
+        Animation:StopAnim(type, id, name, partname, stopBlendDur)
+    end)
 end

@@ -3,6 +3,7 @@ require("YmTools")
 
 local platformId = 229
 local msgIdBlockState = 100115
+local posOrg = Engine.Vector(0, 0, 0)
 
 local typeBoss = 10000
 
@@ -21,6 +22,11 @@ function InitServer()
     -- RegisterEventsServer()
     -- TimerManager:AddTimer(UMath:GetRandomInt(1,10), PlaySfx, "levelcomplete")
     InitServerTimers()
+    InitVars()
+end
+
+function InitVars()
+    posOrg = Element:GetPosition(platformId)
 end
 
 function InitServerTimers() 
@@ -35,30 +41,46 @@ end
 
 function UpdateBossSync(msg)
     local cid = msg.obj.id
-    if msg.action == "move" then
-        TimerManager:AddTimer(2, function ()
-            Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SpearStartAttack", Animation.PART_NAME.FullBody)
-        end)
-        TimerManager:AddTimer(2.7, function ()
-            -- PlaySfx("levelcomplete", "guitar")
-            TimerManager:AddLoopTimer(1, function ()
-                Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SpearAttack", Animation.PART_NAME.FullBody)
-            end)
-        end)
-        Creature:DestroyByTime(cid,29)
+    if msg.action == "attack" then
+        PlayThenStopAnim(1, Animation.PLAYER_TYPE.Creature, cid, "SpearStartAttack", Animation.PART_NAME.FullBody, 1.7, 0.2)
+        PlayThenStopAnim(2, Animation.PLAYER_TYPE.Creature, cid, "SpearAttack", Animation.PART_NAME.FullBody, 2.7, 0.2)
+        -- TimerManager:AddTimer(1, function ()
+        --     Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SpearStartAttack", Animation.PART_NAME.FullBody)
+        -- end)
+        -- TimerManager:AddTimer(1.7, function ()
+        --         Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SpearAttack", Animation.PART_NAME.FullBody)
+        --     end)
+        -- TimerManager:AddTimer(2.7, function ()
+        --     Animation:StopAnim(Animation.PLAYER_TYPE.Creature, cid, "SpearAttack", Animation.PART_NAME.FullBody)
+        -- end)
+        -- Creature:DestroyByTime(cid,29)
+    elseif msg.action == "move" then
+        PlayThenStopAnim(0, Animation.PLAYER_TYPE.Creature, cid, "SitIdle", Animation.PART_NAME.FullBody, 4, 0.2)
+        -- Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SitIdle", Animation.PART_NAME.FullBody)
     end
 end
 
 function UpdateBoss(deltaTime, obj)
     -- print("UpdateBoss ", MiscService:Table2JsonStr(obj))
+    local cid = obj.id
     if IsObjStateCurAndInit(obj, "move", "toMove") then
-        obj.state = "move"
-        local cid = obj.id
+        local state = GetObjState(obj, "move.toMove")
+        if state.dir == nil then
+            state.dir = false
+        end
+        state.dir = (not state.dir)
+        local diff = -300
+        if state.dir then
+            diff = (-1 * diff)
+        end
+        PushAction(true, "UpdateBossSync", {action="move", obj=obj})
+        
+        Creature:SetTargetPointMove(cid, posOrg + Engine.Vector(diff, 0, 200), 1)
+    elseif IsObjStateCurAndInit(obj, "move", "toAttack") then
         -- TimerManager:AddTimer(1, function ()
         --     Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "CommonFallBackLoop", Animation.PART_NAME.FullBody)
         -- end)
-        PushAction(true, "UpdateBossSync", {action="move", obj=obj})
-        
+        PushAction(true, "UpdateBossSync", {action="attack", obj=obj})
     end
 end
 
@@ -68,23 +90,27 @@ function PostGenBoss(msg)
 end
 
 function GenBoss()
-    local cid = Creature:SpawnCreature(1114000000000002, Element:GetPosition(platformId) + Engine.Vector(0,0,1000), Engine.Vector(0,0,0),1)
-    local obj = AddNewObj(0, typeBoss, cid, 1, UpdateBoss)
-    -- AddObjState(obj, "move.startMove")
-    -- AddObjState(obj, "move.toMove")
-    -- AddObjState(obj, "move.moveOver")
-    -- AddObjState(obj, "attack")
+    local pos = posOrg + Engine.Vector(500,0,1000)
+    Element:SpawnElement(Element.SPAWN_SOURCE.Config, 1101002001034000, GenBossAfterPlatform, pos, Engine.Rotator(0,0,0), Engine.Vector(20,5,1), true)
+end
 
-    -- SetObjState(obj, "move.startMove", -1, -1, 2)
-    -- SetObjStateNext(obj, "move.startMove", "move", "toMove")
-    -- SetObjState(obj, "move.toMove", -1, 0, 2)
-    -- SetObjStateNext(obj, "move.toMove", "move", "moveOver")
+function DestroyBoss(deltaTime, obj)
+    Creature:Destroy(obj.id)
+    Element:Destroy(obj.pid)
+end
 
-    -- StartObjStateByName(obj, "move", "startMove")
+function GenBossAfterPlatform(pid)
+    local pos = Element:GetPosition(pid)
+    local cid = Creature:SpawnCreature(1114000000000002, pos + Engine.Vector(0, 0, 200), Engine.Vector(0,0,0), 1)
+    local obj = AddNewObj(0, typeBoss, cid, 1, UpdateBoss, 29, DestroyBoss)
+    obj.pid = pid
 
     AddObjState(obj, "move.toMove")
-
-    SetObjState(obj, "move.toMove", -1, -1, 2)
+    SetObjState(obj, "move.toMove", -1, -1, 5)
+    AddObjState(obj, "move.toAttack")
+    SetObjState(obj, "move.toAttack", -1, -1, 5)
+    SetObjStateNext(obj, "move.toMove", "move", "toAttack")
+    SetObjStateNext(obj, "move.toAttack", "move", "toMove")
     StartObjStateByName(obj, "move", "toMove")
 
     print("GenBoss after ", MiscService:Table2JsonStr(obj))
@@ -93,11 +119,11 @@ function GenBoss()
     --     CheckAllObjStates(0.1)
     -- end)
     
-    TimerManager:AddTimer(2,function ()
-        -- Creature:SetCreatureGravityInfluence(cid, false)
-        Creature:SetPosition(cid, Creature:GetPosition(cid))
-        -- UpdateAllObjStates(GetUpdateDeltaTime())
-    end)
+    -- TimerManager:AddTimer(2,function ()
+    --     -- Creature:SetCreatureGravityInfluence(cid, false)
+    --     Creature:SetPosition(cid, Creature:GetPosition(cid))
+    --     -- UpdateAllObjStates(GetUpdateDeltaTime())
+    -- end)
     
     -- PushAction(true, "PostGenBoss", {cid = cid})
 end

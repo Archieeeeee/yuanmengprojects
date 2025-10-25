@@ -69,7 +69,6 @@ function GameServer:OnUpdate()
     -- 当前游戏总时间
     self.GameTime = TimerManager:GetTimeSeconds() - self.StartTime
     OnUpdateFrame(false)
-    UpdateAllObjStates(GetUpdateDeltaTime())
 
     --每10秒给客户端发送一次广播
     self.ntfCount = self.ntfCount or 0
