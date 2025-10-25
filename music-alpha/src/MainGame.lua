@@ -92,11 +92,20 @@ end
 function GenBoss()
     local pos = posOrg + Engine.Vector(500,0,1000)
     Element:SpawnElement(Element.SPAWN_SOURCE.Config, 1101002001034000, GenBossAfterPlatform, pos, Engine.Rotator(0,0,0), Engine.Vector(20,5,1), true)
+    Element:SpawnElement(Element.SPAWN_SOURCE.Scene, 251, function ()
+        
+    end, pos, Engine.Rotator(0,0,0), Engine.Vector(1,1,1), true)
 end
 
 function DestroyBoss(deltaTime, obj)
+    Element:Destroy(obj.bindEid)
     Creature:Destroy(obj.id)
     Element:Destroy(obj.pid)
+    
+end
+
+function BindSpearToBoss(msg)
+    Element:BindingToCharacterOrNPC(msg.eid, msg.cid, Character.SOCKET_NAME.Prop_R, Character.SOCKET_MODE.SnapToTarget)
 end
 
 function GenBossAfterPlatform(pid)
@@ -114,6 +123,17 @@ function GenBossAfterPlatform(pid)
     StartObjStateByName(obj, "move", "toMove")
 
     print("GenBoss after ", MiscService:Table2JsonStr(obj))
+
+    local callback = function (eid)
+        local state = GetElementState(eid)
+        obj.bindEid = eid
+        SetElementStatePhy(state, false, false, false)
+        SetElementStateColli(state, false)
+        PushAction(true, "SyncElementState", state)
+        PushAction(true, "BindSpearToBoss", {eid=eid, cid=cid})
+    end
+
+    Element:SpawnElement(Element.SPAWN_SOURCE.Config, 1101002001034000, callback, pos, Engine.Rotator(0,0,0), Engine.Vector(1,1,1), true)
 
     -- TimerManager:AddTimer(3,function ()
     --     CheckAllObjStates(0.1)
