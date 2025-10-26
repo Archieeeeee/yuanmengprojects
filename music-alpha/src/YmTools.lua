@@ -413,3 +413,107 @@ function PlayThenStopAnim(delay, type, id, name, partname, stopDelay, stopBlendD
         Animation:StopAnim(type, id, name, partname, stopBlendDur)
     end)
 end
+
+function GetScaleDstCalc(dstSize, orgSize)
+    return Engine.Vector(dstSize.x/orgSize.x, dstSize.y/orgSize.y, dstSize.z/orgSize.z)
+end
+
+function GetElementChildrenSize(eid, resTable)
+    if resTable.size == nil then
+        resTable.size = 0
+    end
+    resTable.size = resTable.size + 1
+    local children = Element:GetChildElementsFromElement(eid)
+    if children ~= nil then
+        for index, child in ipairs(children) do
+            GetElementChildrenSize(child, resTable)
+        end
+    end
+end
+
+function SetElementChildrenSize(eid)
+    local res = {size=0}
+    GetElementChildrenSize(eid, res)
+    CustomProperty:SetCustomProperty(eid, "childNum", CustomProperty.PROPERTY_TYPE.Number, res.size)
+end
+
+function CopyElementAndChildren(eid, props, callbackDone)
+    SetElementChildrenSize(eid)
+    CopyElementAndChildrenHandle({}, eid, nil, props, callbackDone)
+end
+
+function IsAllChildrenGened(srcEid, copyEid)
+    local num = CustomProperty:GetCustomProperty(srcEid, "childNum", CustomProperty.PROPERTY_TYPE.Number)
+    local genNum = CustomProperty:GetCustomProperty(copyEid, "genChildNum", CustomProperty.PROPERTY_TYPE.Number)
+    return (num == genNum)
+end
+
+function GetParentIdFar(eid)
+    local pid = Element:GetAttachParentElement(eid)
+    if (pid == nil) or (pid == 0) then
+        return eid
+    else
+        return GetParentIdFar(pid)
+    end
+end
+
+function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDone)
+    print("CopyElementAndChildrenHandle start ", MiscService:Table2JsonStr(srcTable), " ", eid)
+    local callback = function(copyId)
+        local genNum = 0
+        if srcTable.copyRootId == nil then
+            srcTable.copyRootId = copyId
+            srcTable.srcRootId = eid
+        else
+            genNum = CustomProperty:GetCustomProperty(srcTable.copyRootId, "genChildNum", CustomProperty.PROPERTY_TYPE.Number)
+        end
+        CustomProperty:SetCustomProperty(srcTable.copyRootId, "genChildNum", CustomProperty.PROPERTY_TYPE.Number, genNum + 1)
+        if parentId ~= nil then
+            Element:BindingToElement(copyId, parentId)
+        end
+
+        local children = Element:GetChildElementsFromElement(eid)
+        if children ~= nil then
+            for index, child in ipairs(children) do
+                CopyElementAndChildrenHandle(srcTable, child, copyId, props, callbackDone)
+            end
+        end
+
+        -- 检查是否全都生产了，如果生成将复制出来的父节点id找出来作为参数回调最后的方法
+        if IsAllChildrenGened(srcTable.srcRootId, srcTable.copyRootId) then
+            callbackDone(srcTable.copyRootId)
+        end
+    end
+    CopyElementSingle(eid, props, callback)
+end
+
+function CopyEle(eid, parentId)
+    local callback = function (copyId)
+        if parentId ~= nil then
+            Element:BindingToElement(copyId, parentId)
+        end
+
+        local children = Element:GetChildElementsFromElement(eid)
+        for index, child in ipairs(children) do
+            CopyEle(child, copyId)
+        end
+    end
+    CopyElementSingle(eid, props, callback)
+end
+
+--复制单个元件以及属性
+function CopyElementSingle(eid, props, callbackDone)
+    local callback = function (id)
+        print("CopyElementSingle done ", eid, " ", id)
+        for index, value in ipairs(props) do
+            local prop = CustomProperty:GetCustomProperty(eid, value.name, value.type)
+            if prop ~= nil then
+                CustomProperty:SetCustomProperty(id, value.name, value.type, prop)
+            end
+        end
+        CustomProperty:SetCustomProperty(id, "genChildNum", CustomProperty.PROPERTY_TYPE.Number, 0)
+
+        callbackDone(id)
+    end
+    Element:SpawnElement(Element.SPAWN_SOURCE.Scene, eid, callback, Element:GetPosition(eid), Element:GetRotation(eid), Element:GetScale(eid), true)
+end

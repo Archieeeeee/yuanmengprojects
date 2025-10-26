@@ -6,6 +6,10 @@ local msgIdBlockState = 100115
 local posOrg = Engine.Vector(0, 0, 0)
 
 local typeBoss = 10000
+local cfgAirWallId = 1105000000000074
+local cfgElements = {}
+local protos = {}
+local cfgCopyProps = {}
 
 
 function CallbackCharCreated(playerId)
@@ -23,6 +27,7 @@ function InitServer()
     -- TimerManager:AddTimer(UMath:GetRandomInt(1,10), PlaySfx, "levelcomplete")
     InitServerTimers()
     InitVars()
+    InitBlockProto()
 end
 
 function InitVars()
@@ -32,7 +37,7 @@ end
 function InitServerTimers() 
     -- TimerManager:AddLoopTimer(5, GenBlock)
     AddLoopTimerWithInit(0, 1, RunAllTimerTasks, "1sTasks")
-    AddTimerTask("1sTasks", "genBlock", 0, 5, GenBlock)
+    AddTimerTask("1sTasks", "genBlock", 0, 10, GenBlock)
     AddTimerTask("1sTasks", "genBoss", 0, 30, GenBoss)
     -- AddTimerTask("1sTasks", "sfxTest", 3, 60, function ()
     --     PlaySfx("starmantwo")
@@ -216,9 +221,47 @@ function OnClientNotify(msgId, msg)
     end
 end
 
+function InitBlockProto()
+    cfgElements.airWall = {id=1105000000000074, size=Engine.Vector(5,5,3)}
+    cfgElements.cube = {id=1101002001034000, size=Engine.Vector(1,1,1)}
+    protos.blockUnknown = {}
+    InitProtoBlockUnknown()
+end
 
+function GenBlock()
+    local rd = UMath:GetRandomInt(1,1)
+    if rd == 1 then
+        GenBlockUnknown()
+    end
+end
 
-function GenBlock() 
+function GenBlockUnknown()
+    print("GenBlockUnknown start")
+    local callback = function (eid)
+        print("GenBlockUnknown done", eid)
+        Element:SetPosition(eid, posOrg + Engine.Vector(0, 0, 900), Element.COORDINATE.World)
+    end
+    -- CopyElementAndChildren(protos.blockUnknown.id, cfgCopyProps, callback)
+    CopyElementAndChildren(277, cfgCopyProps, callback)
+end
+
+function InitProtoBlockUnknown()
+    local genPos = Engine.Vector(-10000, -10000, -10000)
+    local awCallback = function (awId)
+        protos.blockUnknown.id = awId
+        local cubeScale = GetScaleDstCalc(Engine.Vector(2.0, 2.0, 2.0), cfgElements.cube.size)
+        local cubeCallback = function (cubeId)
+            Element:BindingToElement(cubeId,awId)
+            print("InitProtoBlockUnknown done ", awId)
+            -- Element:SetPosition(awId,posOrg + Engine.Vector(0,0, 1800), Element.COORDINATE.World)
+        end
+        Element:SpawnElement(Element.SPAWN_SOURCE.Config, cfgElements.cube.id, cubeCallback, genPos + Engine.Vector(0, 0, 10), Engine.Rotator(0,0,0), cubeScale, true)
+    end
+    local awScale = GetScaleDstCalc(Engine.Vector(2.0, 2.0, 2.0), cfgElements.airWall.size)
+    Element:SpawnElement(Element.SPAWN_SOURCE.Config, cfgElements.airWall.id, awCallback, genPos, Engine.Rotator(0,0,0), awScale, true)
+end
+
+function GenBlockBall() 
     local callback = function(elementId)
         ServerLog("GenBlock res ", elementId)
         local color = getRandomColorRGBA()
