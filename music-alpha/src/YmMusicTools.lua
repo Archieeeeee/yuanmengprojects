@@ -14,7 +14,7 @@ local genUnits = false
 local genUnitsOrgPos = Engine.Vector(-375, 0, 200)
 
 -- local track1 = {notes={note1}, cueNoteIdx=1}
-local musicDataPrefix = "Str"
+local musicDataSuffix = "Str"
 local musicAll = {}
 
 function getRandomColorBit()
@@ -179,7 +179,7 @@ function InitMusic()
 end
 
 function getMusicData(name)
-    local varName = string.format("%s%s", name, musicDataPrefix)
+    local varName = string.format("%s%s", name, musicDataSuffix)
     local musicData = _G[varName]
     -- print("PlayMusic musicData ", varName, " ", musicData)
     local music = MiscService:JsonStr2Table(musicData)

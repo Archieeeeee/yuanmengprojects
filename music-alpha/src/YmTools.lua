@@ -1,5 +1,6 @@
 
 require("YmMusicTools")
+require("YmDataTable")
 
 --游戏运行时间,如果游戏暂停了这个时间不会增加
 local RunningTime = 0
@@ -543,4 +544,25 @@ function DestroyElementAndChildren(eid)
         end
     end
     Element:Destroy(eid)
+end
+
+function GetTableFromGlobal(name)
+    local varName = string.format("%s%s", name, "Str")
+    local data = _G[varName]
+    local dataTable = MiscService:JsonStr2Table(data)
+    return dataTable
+end
+
+function LoadGlobalVarsFromData(names)
+    for index, name in ipairs(names) do
+        _G[name] = GetTableFromGlobal(name)
+    end
+end
+
+function LoopTimerCanRun(theTable, name, dur)
+    if GetGameTimeCur() - theTable[name] < dur then
+        return false
+    end
+    theTable[name] = GetGameTimeCur()
+    return true
 end

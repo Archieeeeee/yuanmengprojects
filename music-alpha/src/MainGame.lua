@@ -10,6 +10,10 @@ local cfgAirWallId = 1105000000000074
 local cfgElements = {}
 local protos = {}
 local cfgCopyProps = {}
+local cfgDataNames = {"ymAnimes"}
+local haohaoyaId = 327
+local animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
+ymAnimes = {}
 
 
 function CallbackCharCreated(playerId)
@@ -33,6 +37,45 @@ end
 
 function InitVars()
     posOrg = Element:GetPosition(platformId)
+    LoadGlobalVarsFromData(cfgDataNames)
+    print("animeData sss ", MiscService:Table2JsonStr(ymAnimes))
+    -- print("animeData aaa ", MiscService:Table2JsonStr(animeData))
+    -- print("animeData bbb ", animeData.m)
+    -- for index, value in ipairs(animeData.animeList) do
+    --     print("animeData index ", value.name)
+    -- end
+    -- print("animeData ", animeData)
+end
+
+function PlayAnime()
+    print("PlayAnime start")
+    local nextCur = animeDemo.cur + 1
+    if nextCur > #ymAnimes.animeList then
+        nextCur = 1
+    end
+
+    if LoopTimerCanRun(animeDemo, "lastCount", 1) then
+        local cd = math.ceil(5 - GetGameTimeCur() + animeDemo.lastPlay)
+        if animeDemo.cur ~= 0 then
+            UI:SetText({101432}, UMath:NumberToString(cd))
+            UI:SetText({101433}, string.format("正在播放: %s", ymAnimes.animeList[animeDemo.cur].n))
+            UI:SetText({101211}, string.format("下一个: %s", ymAnimes.animeList[nextCur].n))
+        end
+    end
+
+    if LoopTimerCanRun(animeDemo, "lastPlay", 5) then
+        animeDemo.cur = animeDemo.cur + 1
+        if animeDemo.cur > #ymAnimes.animeList then
+            animeDemo.cur = 1
+        end
+
+        print("PlayAnime will play ", ymAnimes.animeList[animeDemo.cur].v)
+        PlayThenStopAnim(0, Animation.PLAYER_TYPE.Creature, haohaoyaId, ymAnimes.animeList[animeDemo.cur].v, Animation.PART_NAME.FullBody, 4.5, 0.2)
+    end
+    
+    
+    -- if animeDemo.lastName ~= nil then
+    -- end
 end
 
 function InitServerTimers() 
@@ -40,6 +83,7 @@ function InitServerTimers()
     AddLoopTimerWithInit(0, 1, RunAllTimerTasks, "1sTasks")
     AddTimerTask("1sTasks", "genBlock", 2, 10, GenBlock)
     AddTimerTask("1sTasks", "genBoss", 2, 30, GenBoss)
+    AddTimerTask("1sTasks", "playAnime", 3, 0.9, PlayAnime)
     -- AddTimerTask("1sTasks", "sfxTest", 3, 60, function ()
     --     PlaySfx("starmantwo")
     -- end)
@@ -243,6 +287,8 @@ function InitBlockProto()
     cfgElements.cubeNight = {id=1101002001105000, size=Engine.Vector(1,1,1)}
     protos.blockUnknown = {}
     InitProtoBlockUnknown()
+
+    Creature:SetScale(haohaoyaId, 3)
 end
 
 function GenBlock()
