@@ -414,8 +414,24 @@ function PlayThenStopAnim(delay, type, id, name, partname, stopDelay, stopBlendD
     end)
 end
 
+--缩放元件到指定大小
+function SetElementScaleDst(eid, dstSize, orgSize)
+    Element:SetScale(eid, GetScaleDstCalc(dstSize, orgSize))
+end
+
+--缩放元件到指定大小
+function SetElementScaleDstXyz(eid, orgSize, x, y, z)
+    Element:SetScale(eid, GetScaleDstCalcXyz(orgSize, x, y, z))
+end
+
+--计算缩放到指定大小需要的缩放参数
 function GetScaleDstCalc(dstSize, orgSize)
     return Engine.Vector(dstSize.x/orgSize.x, dstSize.y/orgSize.y, dstSize.z/orgSize.z)
+end
+
+--计算缩放到指定大小需要的缩放参数
+function GetScaleDstCalcXyz(orgSize, x, y, z)
+    return Engine.Vector(x/100.0/orgSize.x, y/100.0/orgSize.y, z/100.0/orgSize.z)
 end
 
 function GetElementChildrenSize(eid, resTable)
@@ -516,4 +532,15 @@ function CopyElementSingle(eid, props, callbackDone)
         callbackDone(id)
     end
     Element:SpawnElement(Element.SPAWN_SOURCE.Scene, eid, callback, Element:GetPosition(eid), Element:GetRotation(eid), Element:GetScale(eid), true)
+end
+
+function DestroyElementAndChildren(eid)
+    print("DestroyElementAndChildren ", eid)
+    local children = Element:GetChildElementsFromElement(eid)
+    if children ~= nil then
+        for index, child in ipairs(children) do
+            DestroyElementAndChildren(child)
+        end
+    end
+    Element:Destroy(eid)
 end

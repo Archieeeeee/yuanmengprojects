@@ -5,7 +5,7 @@ local platformId = 229
 local msgIdBlockState = 100115
 local posOrg = Engine.Vector(0, 0, 0)
 
-local typeBoss = 10000
+local typeObjs = {boss = 1000, blockUnknown=101}
 local cfgAirWallId = 1105000000000074
 local cfgElements = {}
 local protos = {}
@@ -25,9 +25,10 @@ end
 function InitServer() 
     -- RegisterEventsServer()
     -- TimerManager:AddTimer(UMath:GetRandomInt(1,10), PlaySfx, "levelcomplete")
-    InitServerTimers()
     InitVars()
     InitBlockProto()
+
+    InitServerTimers()
 end
 
 function InitVars()
@@ -37,8 +38,8 @@ end
 function InitServerTimers() 
     -- TimerManager:AddLoopTimer(5, GenBlock)
     AddLoopTimerWithInit(0, 1, RunAllTimerTasks, "1sTasks")
-    AddTimerTask("1sTasks", "genBlock", 0, 10, GenBlock)
-    AddTimerTask("1sTasks", "genBoss", 0, 30, GenBoss)
+    AddTimerTask("1sTasks", "genBlock", 2, 10, GenBlock)
+    AddTimerTask("1sTasks", "genBoss", 2, 30, GenBoss)
     -- AddTimerTask("1sTasks", "sfxTest", 3, 60, function ()
     --     PlaySfx("starmantwo")
     -- end)
@@ -62,6 +63,13 @@ function UpdateBossSync(msg)
     elseif msg.action == "move" then
         PlayThenStopAnim(0, Animation.PLAYER_TYPE.Creature, cid, "SitIdle", Animation.PART_NAME.FullBody, 4, 0.2)
         -- Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "SitIdle", Animation.PART_NAME.FullBody)
+    end
+end
+
+function UpdateBlock(deltaTime, obj)
+    local bid = obj.id
+    if CanObjStateInit(obj, "move.toMove") then
+        Element:EnableMotionUnitByIndex(bid, 1, true)
     end
 end
 
@@ -103,10 +111,18 @@ function GenBoss()
 end
 
 function DestroyBoss(deltaTime, obj)
+    -- 投掷物
     Element:Destroy(obj.bindEid)
+    -- 角色
     Creature:Destroy(obj.id)
+    -- 平台
     Element:Destroy(obj.pid)
     
+end
+
+function DestroyBlock(deltaTime, obj)
+    -- print("DestroyBlock start")
+    DestroyElementAndChildren(obj.id)
 end
 
 function BindSpearToBoss(msg)
@@ -116,7 +132,7 @@ end
 function GenBossAfterPlatform(pid)
     local pos = Element:GetPosition(pid)
     local cid = Creature:SpawnCreature(1114000000000002, pos + Engine.Vector(0, 0, 200), Engine.Vector(0,0,0), 1)
-    local obj = AddNewObj(0, typeBoss, cid, 1, UpdateBoss, 29, DestroyBoss)
+    local obj = AddNewObj(0, typeObjs.boss, cid, 1, UpdateBoss, 29, DestroyBoss)
     obj.pid = pid
 
     AddObjState(obj, "move.toMove")
@@ -224,6 +240,7 @@ end
 function InitBlockProto()
     cfgElements.airWall = {id=1105000000000074, size=Engine.Vector(5,5,3)}
     cfgElements.cube = {id=1101002001034000, size=Engine.Vector(1,1,1)}
+    cfgElements.cubeNight = {id=1101002001105000, size=Engine.Vector(1,1,1)}
     protos.blockUnknown = {}
     InitProtoBlockUnknown()
 end
@@ -239,15 +256,21 @@ function GenBlockUnknown()
     print("GenBlockUnknown start")
     local callback = function (eid)
         print("GenBlockUnknown done", eid)
-        Element:SetPosition(eid, posOrg + Engine.Vector(0, 0, 900), Element.COORDINATE.World)
+        Element:SetPosition(eid, posOrg + Engine.Vector(0, 0, 500), Element.COORDINATE.World)
+        local obj = AddNewObj(0, typeObjs.blockUnknown, eid, 0, UpdateBlock, 8, DestroyBlock)
+        AddObjState(obj, "move.toMove")
+        SetObjState(obj, "move.toMove", -1, -1, 90)
+        StartObjStateByName(obj, "move", "toMove")
     end
-    -- CopyElementAndChildren(protos.blockUnknown.id, cfgCopyProps, callback)
-    CopyElementAndChildren(277, cfgCopyProps, callback)
+    CopyElementAndChildren(protos.blockUnknown.id, cfgCopyProps, callback)
+    -- CopyElementAndChildren(277, cfgCopyProps, callback)
 end
 
 function InitProtoBlockUnknown()
     local genPos = Engine.Vector(-10000, -10000, -10000)
     local awCallback = function (awId)
+        Element:SetPosition(awId, genPos, Element.COORDINATE.World)
+        SetElementScaleDstXyz(awId, cfgElements.airWall.size, 198, 198, 100)
         protos.blockUnknown.id = awId
         local cubeScale = GetScaleDstCalc(Engine.Vector(2.0, 2.0, 2.0), cfgElements.cube.size)
         local cubeCallback = function (cubeId)
@@ -257,8 +280,10 @@ function InitProtoBlockUnknown()
         end
         Element:SpawnElement(Element.SPAWN_SOURCE.Config, cfgElements.cube.id, cubeCallback, genPos + Engine.Vector(0, 0, 10), Engine.Rotator(0,0,0), cubeScale, true)
     end
-    local awScale = GetScaleDstCalc(Engine.Vector(2.0, 2.0, 2.0), cfgElements.airWall.size)
-    Element:SpawnElement(Element.SPAWN_SOURCE.Config, cfgElements.airWall.id, awCallback, genPos, Engine.Rotator(0,0,0), awScale, true)
+    -- local awScale = GetScaleDstCalc(Engine.Vector(2.0, 2.0, 1.0), cfgElements.airWall.size)
+    -- Element:SpawnElement(Element.SPAWN_SOURCE.Config, cfgElements.airWall.id, awCallback, genPos, Engine.Rotator(0,0,0), awScale, true)
+    CopyElementAndChildren(291, cfgCopyProps, awCallback)
+    -- CopyElementAndChildren(303, cfgCopyProps, awCallback)
 end
 
 function GenBlockBall() 
