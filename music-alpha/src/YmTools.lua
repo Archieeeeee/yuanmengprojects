@@ -4,9 +4,10 @@ require("YmDataTable")
 
 --游戏运行时间,如果游戏暂停了这个时间不会增加
 local RunningTime = 0
-local MsgIdGameAction = 100244
+MsgIds = {commonAction=100244}
 local clientTimeState = {}
 local serverTimeState = {}
+TaskNames = {task1s="1sTasks", taskFrame="frameTasks"}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -259,7 +260,7 @@ function UnpauseGame(state)
 end
 
 function BindNotifyAction()
-    System:BindNotify(MsgIdGameAction, function(msgId, msg)
+    System:BindNotify(MsgIds.commonAction, function(msgId, msg)
         DoAction(msg)
     end)
 end
@@ -271,13 +272,13 @@ function PushAction(doSelf, funcName, funcArg, dstId, toAllClients)
     local msg = {funcName = funcName, funcArg = funcArg}
     if toAllClients then
         if not System:IsStandalone() then
-            System:SendToAllClients(MsgIdGameAction, msg)
+            System:SendToAllClients(MsgIds.commonAction, msg)
         end
     else
         if dstId == nil then
-            System:SendToServer(MsgIdGameAction, msg)
+            System:SendToServer(MsgIds.commonAction, msg)
         else
-            System:SendToClient(dstId, MsgIdGameAction, msg)
+            System:SendToClient(dstId, MsgIds.commonAction, msg)
         end
     end
 
@@ -350,24 +351,25 @@ function UpdateAllObjects(deltaTime)
         end
     end
     for index, value in ipairs(removeIds) do
-        print("remove unactive object ", id)
+        print("remove unactive object ", value)
         objectsAio[value] = nil
     end
     -- check active
     for id, obj in pairs(objectsAio) do
         local timeCur = GetGameTimeCur()
         -- print("UpdateAllObjStates ", timeCur, " ", MiscService:Table2JsonStr(obj))
-        if not obj.active then
-        elseif obj.lifeDur >= 0 and (timeCur - obj.createTs > obj.lifeDur) then
-            obj.active = false
-            if obj.destroyFunc ~= nil then
-                obj.destroyFunc(deltaTime, obj)
+        if obj.active then
+            if obj.lifeDur >= 0 and (timeCur - obj.createTs > obj.lifeDur) then
+                obj.active = false
+                if obj.destroyFunc ~= nil then
+                    obj.destroyFunc(deltaTime, obj)
+                end
+            elseif (timeCur - obj.lastUpdateTs) < obj.updateDur then
+            elseif obj.updateFunc ~= nil then
+                -- print("UpdateAllObjStates updateFunc", MiscService:Table2JsonStr(obj))
+                obj.lastUpdateTs = timeCur
+                obj.updateFunc(deltaTime, obj)
             end
-        elseif (timeCur - obj.lastUpdateTs) < obj.updateDur then
-        elseif obj.updateFunc ~= nil then
-            -- print("UpdateAllObjStates updateFunc", MiscService:Table2JsonStr(obj))
-            obj.lastUpdateTs = timeCur
-            obj.updateFunc(deltaTime, obj)
         end
     end
 end
@@ -394,6 +396,8 @@ function AddTimerTask(groupName, taskName, initialDelay, delayTime, callback)
     print("AddTimerTask done ", MiscService:Table2JsonStr(timerTaskState))
 end
 
+--检查所有的定时任务并执行
+---@param groupName string 定时任务组的名称
 function RunAllTimerTasks(groupName)
     -- print("RunAllTimerTasks start ", MiscService:Table2JsonStr(timerTaskState))
     if timerTaskState[groupName] == nil then
@@ -529,7 +533,7 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
     CopyElementSingle(eid, props, callback)
 end
 
-function CopyEle(eid, parentId)
+function CopyEle(eid, parentId, props)
     local callback = function (copyId)
         if parentId ~= nil then
             Element:BindingToElement(copyId, parentId)
@@ -616,5 +620,5 @@ end
 function PushGlobalVarSingle(name, value)
     local varMsg = BuildSyncVarMsg()
     PushSyncVar(varMsg, name, value)
-    PushAction(false, "SyncGlobalVars", varMsg)
+    PushActionToClients(false, "SyncGlobalVars", varMsg)
 end

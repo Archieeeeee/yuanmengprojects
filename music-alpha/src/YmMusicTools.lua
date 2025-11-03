@@ -51,7 +51,7 @@ end
 
 
 function playSingleNote(midiAio, note)
-    print("playSingleNote 1", MiscService:Table2JsonStr(note))
+    
 
     -- TimerManager:AddTimer(2, Audio:PlaySFXAudio2D(note.note,2,100,0))
     local durationNote = (note.tickOff - note.tickOn) * midiAio.timePerBitMs / 1000.0
@@ -67,7 +67,9 @@ function playSingleNote(midiAio, note)
     noteRemap = math.min(noteRemap, ins.max)
     noteRemap = math.max(noteRemap, ins.min)
     
-    Audio:PlaySFXAudio2D(noteRemap, durationNote, 100, 0)
+    local volume = math.floor(100.0 * midiAio.volume)
+    print("playSingleNote 1", MiscService:Table2JsonStr(note), " ", volume)
+    Audio:PlaySFXAudio2D(noteRemap, durationNote, volume, 0)
     -- Audio:PlaySFXAudio2D(500001 + 23, 0.2, 100, 0)
 end
 
@@ -92,7 +94,7 @@ function checkAllMusic()
 end
 
 function checkMusicTracks(midiAio)
-    print("checkAllTracks 1 ",  TimerManager:GetTimeSeconds(), " ", midiAio.cuePosMs)
+    print("checkAllTracks 1 ",  TimerManager:GetTimeSeconds(), " ", midiAio.cuePosMs, " ", midiAio.volume)
     -- TimerManager:AddTimer(1,Audio:PlaySFXAudio2D(500001 + 23, 0.2, 100, 0))
     -- TimerManager:AddTimer(1,Audio:PlaySFXAudio2D(500001 + 18, 0.2, 100, 0))
     -- TimerManager:AddTimer(1,Audio:PlaySFXAudio2D(500001 + 21, 0.2, 100, 0))
@@ -185,11 +187,12 @@ function getMusicData(name)
     local music = MiscService:JsonStr2Table(musicData)
     music.genNoteDelay = 10
     music.ins = "piano"
+    music.volume = 1
     return music
 end
 
 --loopTimes -1 表示一直循环
-function PlayMusic(name, instrument, loopTimesVar)
+function PlayMusic(name, instrument, loopTimesVar, volume)
     local music = musicAll[name]
     if music == nil then
         music = getMusicData(name)
@@ -198,13 +201,25 @@ function PlayMusic(name, instrument, loopTimesVar)
         musicAll[name] = music
     end
     music.ins = instrument
+    if instrument == nil or instrument == 0 then
+        music.ins = "piano"
+    end
+    if volume ~= nil then
+        music.volume = volume
+    end
     checkAllMusic()
 end
 
-function PlaySfx(name, instrument)
+function PlaySfx(name, instrument, volume)
     local music = getMusicData(name)
     music.genNoteDelay = 0
     music.ins = instrument
+    if instrument == nil or instrument == 0 then
+        music.ins = "piano"
+    end
+    if volume ~= nil then
+        music.volume = volume
+    end
     checkMusicTracks(music)
 end
 

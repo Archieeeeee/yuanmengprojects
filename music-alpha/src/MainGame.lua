@@ -100,6 +100,7 @@ function SyncPlayAnime()
         print("PlayAnime will play aaa", MiscService:Table2JsonStr(ymAnimes))
         print("PlayAnime will play bbb", MiscService:Table2JsonStr(animeDemo))
         print("PlayAnime will play ", ymAnimes.animeList[animeDemo.cur].v)
+        -- PlaySfx("oneup", 0, 0.8)
         PlayThenStopAnim(0, Animation.PLAYER_TYPE.Creature, haohaoyaId, ymAnimes.animeList[animeDemo.cur].v, Animation.PART_NAME.FullBody, 4.5, 0.2)
     end
 end
@@ -122,9 +123,10 @@ end
 function InitServerTimers() 
     -- TimerManager:AddLoopTimer(5, GenBlock)
     
-    AddTimerTask("1sTasks", "genBlock", 2, 10, GenBlock)
-    AddTimerTask("1sTasks", "genBoss", 2, 30, GenBoss)
-    AddTimerTask("1sTasks", "playAnime", 3, 0.9, PlayAnime)
+    AddTimerTask(TaskNames.task1s, "genBlock", 2, 10, GenBlock)
+    AddTimerTask(TaskNames.task1s, "genBoss", 2, 30, GenBoss)
+    AddTimerTask(TaskNames.task1s, "GenBlockBall", 2, 10, GenBlockBall)
+    AddTimerTask(TaskNames.task1s, "playAnime", 3, 0.9, PlayAnime)
     -- AddTimerTask("1sTasks", "sfxTest", 3, 60, function ()
     --     PlaySfx("starmantwo")
     -- end)
@@ -154,9 +156,31 @@ end
 function UpdateBlock(deltaTime, obj)
     local bid = obj.id
     if CanObjStateInit(obj, "move.toMove") then
-        Element:EnableMotionUnitByIndex(bid, 1, true)
+        print("UpdateBlock toMove")
+        
+        if obj.wm then
+            local state = GetElementState(bid)
+            SetElementStateMotion(state, 1, true)
+            PushActionToClients(true, "SyncElementState", state)
+        end
+        -- Element:EnableMotionUnitByIndex(bid, 1, true)
+        -- PushActionToClients(true, "SyncUpdateBlockPos", {eid=bid})
+        -- PushActionToClients(true, "SyncStartUpdateBlockTimer", {eid=bid})
     end
+
+    -- Element:SetPosition(bid, Element:GetPosition(bid) + Engine.Vector(-500 * GetUpdateDeltaTime(), 0, 0), Element.COORDINATE.World)
 end
+
+
+function SyncStartUpdateBlockTimer(msg)
+    AddTimerTask(TaskNames.taskFrame, "SyncUpdateBlockPos", 0, 0, SyncUpdateBlockPos)
+end
+
+function SyncUpdateBlockPos(msg)
+    local bid = msg.eid
+    Element:SetPosition(bid, Element:GetPosition(bid) + Engine.Vector(-500 * GetUpdateDeltaTime(), 0, 0), Element.COORDINATE.World)
+end
+
 
 function UpdateBoss(deltaTime, obj)
     -- print("UpdateBoss ", MiscService:Table2JsonStr(obj))
@@ -265,6 +289,10 @@ function SetElementStateColor(state, idx, color)
     table.insert(state.colors, {n=idx, c=color})
 end
 
+function SetElementStateMotion(state, index, enable)
+    state.motion = {index=index, enable=enable}
+end
+
 function SetElementStatePhy(state, phyAffectForce, phyCarrible, phyColliChar)
     state.phys = {phyAffectForce, phyCarrible, phyColliChar}
 end
@@ -311,23 +339,22 @@ function SyncElementState(state)
     if state.mass ~= nil then
         Element:SetMass(elementId, state.mass)
     end
-end
 
-function OnClientNotify(msgId, msg)
-    print("OnClientNotify ", MiscService:Table2JsonStr(msg))
-    if msgId == msgIdBlockState then
-        if not System:IsStandalone() then
-            SyncElementState(msg)
-        end
+    if state.motion ~= nil then
+        Element:EnableMotionUnitByIndex(elementId, state.motion.index, state.motion.enable)
     end
 end
+
+
 
 function InitBlockProto()
     cfgElements.airWall = {id=1105000000000074, size=Engine.Vector(5,5,3)}
     cfgElements.cube = {id=1101002001034000, size=Engine.Vector(1,1,1)}
     cfgElements.cubeNight = {id=1101002001105000, size=Engine.Vector(1,1,1)}
     protos.blockUnknown = {}
-    InitProtoBlockUnknown()
+    protos.blockUnknownMotion = {}
+    InitProtoBlockUnknown(false)
+    InitProtoBlockUnknown(true)
 
     
     
@@ -340,30 +367,54 @@ end
 function GenBlock()
     local rd = UMath:GetRandomInt(1,1)
     if rd == 1 then
-        GenBlockUnknown()
+        GenBlockUnknown(false)
+        GenBlockUnknown(true)
     end
 end
 
-function GenBlockUnknown()
+function GenBlockUnknown(withMotion)
     print("GenBlockUnknown start")
     local callback = function (eid)
         print("GenBlockUnknown done", eid)
-        Element:SetPosition(eid, posOrg + Engine.Vector(0, 0, 500), Element.COORDINATE.World)
+        local pos = posOrg + Engine.Vector(0, -200, 500)
+        if withMotion then
+            pos = posOrg + Engine.Vector(0, 300, 500)
+        end
+        Element:SetPosition(eid, pos, Element.COORDINATE.World)
         local obj = AddNewObj(0, typeObjs.blockUnknown, eid, 0, UpdateBlock, 8, DestroyBlock)
+        obj.cid = Element:GetChildElementsFromElement(eid)[1]
+        local state = GetElementState(obj.cid)
+        if withMotion then
+            obj.wm = false
+            SetElementStateColor(state, 1, "#2222FF")
+        else
+            obj.wm = true
+            SetElementStateColor(state, 1, "#FF2222")
+        end
+        PushActionToClients(true, "SyncElementState", state)
         AddObjState(obj, "move.toMove")
         SetObjState(obj, "move.toMove", -1, -1, 90)
         StartObjStateByName(obj, "move", "toMove")
     end
-    CopyElementAndChildren(protos.blockUnknown.id, cfgCopyProps, callback)
+    if withMotion then
+        CopyElementAndChildren(protos.blockUnknown.id, cfgCopyProps, callback)
+    else
+        CopyElementAndChildren(protos.blockUnknownMotion.id, cfgCopyProps, callback)
+    end
+    
     -- CopyElementAndChildren(277, cfgCopyProps, callback)
 end
 
-function InitProtoBlockUnknown()
+function InitProtoBlockUnknown(withMotion)
     local genPos = Engine.Vector(-10000, -10000, -10000)
     local awCallback = function (awId)
         Element:SetPosition(awId, genPos, Element.COORDINATE.World)
         SetElementScaleDstXyz(awId, cfgElements.airWall.size, 198, 198, 100)
-        protos.blockUnknown.id = awId
+        if withMotion then
+            protos.blockUnknown.id = awId
+        else
+            protos.blockUnknownMotion.id = awId
+        end
         local cubeScale = GetScaleDstCalc(Engine.Vector(2.0, 2.0, 2.0), cfgElements.cube.size)
         local cubeCallback = function (cubeId)
             Element:BindingToElement(cubeId,awId)
@@ -374,7 +425,12 @@ function InitProtoBlockUnknown()
     end
     -- local awScale = GetScaleDstCalc(Engine.Vector(2.0, 2.0, 1.0), cfgElements.airWall.size)
     -- Element:SpawnElement(Element.SPAWN_SOURCE.Config, cfgElements.airWall.id, awCallback, genPos, Engine.Rotator(0,0,0), awScale, true)
-    CopyElementAndChildren(291, cfgCopyProps, awCallback)
+    if withMotion then
+        CopyElementAndChildren(291, cfgCopyProps, awCallback)
+    else
+        CopyElementAndChildren(331, cfgCopyProps, awCallback)
+    end
+    
     -- CopyElementAndChildren(303, cfgCopyProps, awCallback)
 end
 
