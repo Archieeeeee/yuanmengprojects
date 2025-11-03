@@ -3,7 +3,7 @@ require("YmTools")
 
 local platformId = 229
 local msgIdBlockState = 100115
-local posOrg = Engine.Vector(0, 0, 0)
+posOrg = Engine.Vector(0, 0, 0)
 
 local typeObjs = {boss = 1000, blockUnknown=101}
 local cfgAirWallId = 1105000000000074
@@ -12,7 +12,7 @@ local protos = {}
 local cfgCopyProps = {}
 local cfgDataNames = {"ymAnimes"}
 local haohaoyaId = 327
-local animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
+animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
 ymAnimes = {}
 
 
@@ -23,6 +23,7 @@ end
 
 function InitClient() 
     print("BindNotify InitClient")
+    InitVars()
     BindNotifyAction()
 end
 
@@ -31,6 +32,7 @@ function InitServer()
     -- TimerManager:AddTimer(UMath:GetRandomInt(1,10), PlaySfx, "levelcomplete")
     InitVars()
     InitBlockProto()
+    PushAction(true, "SyncInit", {})
 
     InitServerTimers()
 end
@@ -45,37 +47,54 @@ function InitVars()
     --     print("animeData index ", value.name)
     -- end
     -- print("animeData ", animeData)
+
+    -- local varMsg = BuildSyncVarMsg()
+    -- PushSyncVar(varMsg, "posOrg", posOrg)
+    -- PushSyncVar(varMsg, "ymAnimes", ymAnimes)
+    -- PushAction(false, "SyncGlobalVars", varMsg)
 end
 
 function PlayAnime()
     print("PlayAnime start")
-    local nextCur = animeDemo.cur + 1
-    if nextCur > #ymAnimes.animeList then
-        nextCur = 1
-    end
-
-    if LoopTimerCanRun(animeDemo, "lastCount", 1) then
-        local cd = math.ceil(5 - GetGameTimeCur() + animeDemo.lastPlay)
-        if animeDemo.cur ~= 0 then
-            UI:SetText({101432}, UMath:NumberToString(cd))
-            UI:SetText({101433}, string.format("正在播放: %s", ymAnimes.animeList[animeDemo.cur].n))
-            UI:SetText({101211}, string.format("下一个: %s", ymAnimes.animeList[nextCur].n))
-        end
-    end
 
     if LoopTimerCanRun(animeDemo, "lastPlay", 5) then
         animeDemo.cur = animeDemo.cur + 1
         if animeDemo.cur > #ymAnimes.animeList then
             animeDemo.cur = 1
         end
+        PushGlobalVarSingle("animeDemo", animeDemo)
+        PushAction(true, "SyncPlayAnime", {})
+    end
 
+    if LoopTimerCanRun(animeDemo, "lastCount", 1) then
+        PushGlobalVarSingle("animeDemo", animeDemo)
+        PushAction(true, "SyncPlayAnimeUI", {})
+    end
+
+end
+
+function SyncPlayAnime()
+    if animeDemo.cur ~= 0 then
+        print("PlayAnime will play aaa", MiscService:Table2JsonStr(ymAnimes))
+        print("PlayAnime will play bbb", MiscService:Table2JsonStr(animeDemo))
         print("PlayAnime will play ", ymAnimes.animeList[animeDemo.cur].v)
         PlayThenStopAnim(0, Animation.PLAYER_TYPE.Creature, haohaoyaId, ymAnimes.animeList[animeDemo.cur].v, Animation.PART_NAME.FullBody, 4.5, 0.2)
     end
-    
-    
-    -- if animeDemo.lastName ~= nil then
-    -- end
+end
+
+function SyncPlayAnimeUI()
+    print("SyncPlayAnime start ", MiscService:Table2JsonStr(animeDemo))
+    local nextCur = animeDemo.cur + 1
+    if nextCur > #ymAnimes.animeList then
+        nextCur = 1
+    end
+
+    local cd = math.ceil(5 - GetGameTimeCur() + animeDemo.lastPlay)
+    if animeDemo.cur ~= 0 then
+        UI:SetText({101432}, UMath:NumberToString(cd))
+        UI:SetText({101433}, string.format("正在播放: %s", ymAnimes.animeList[animeDemo.cur].n))
+        UI:SetText({101211}, string.format("下一个: %s", ymAnimes.animeList[nextCur].n))
+    end
 end
 
 function InitServerTimers() 
@@ -288,7 +307,14 @@ function InitBlockProto()
     protos.blockUnknown = {}
     InitProtoBlockUnknown()
 
-    Creature:SetScale(haohaoyaId, 3)
+    TimerManager:AddTimer(1, function ()
+        Creature:SetScale(haohaoyaId, 3)
+    end)
+    
+end
+
+function SyncInit()
+    
 end
 
 function GenBlock()

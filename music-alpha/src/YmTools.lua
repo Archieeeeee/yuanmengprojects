@@ -338,7 +338,9 @@ function UpdateAllObjects(deltaTime)
         if not obj.active then
         elseif obj.lifeDur >= 0 and (timeCur - obj.createTs > obj.lifeDur) then
             obj.active = false
-            obj.destroyFunc(deltaTime, obj)
+            if obj.destroyFunc ~= nil then
+                obj.destroyFunc(deltaTime, obj)
+            end
         elseif (timeCur - obj.lastUpdateTs) < obj.updateDur then
         elseif obj.updateFunc ~= nil then
             -- print("UpdateAllObjStates updateFunc", MiscService:Table2JsonStr(obj))
@@ -565,4 +567,31 @@ function LoopTimerCanRun(theTable, name, dur)
     end
     theTable[name] = GetGameTimeCur()
     return true
+end
+
+--用于在前后台同步全局变量,初始化
+function BuildSyncVarMsg()
+    return {names={}, values={}}
+end
+
+--用于在前后台同步全局变量,添加变量
+function PushSyncVar(msg, name, value)
+    table.insert(msg.names, name)
+    msg.values[name] = value
+end
+
+--用于在前后台同步全局变量 {names={"posorg", "speed"}, values={}}
+function SyncGlobalVars(msg)
+    print("SyncGlobalVars aaa", MiscService:Table2JsonStr(msg))
+    for index, name in ipairs(msg.names) do
+        _G[name] = msg.values[name]
+        print("SyncGlobalVars bbb ", MiscService:Table2JsonStr(_G[name]))
+    end
+end
+
+--用于在前后台同步全局变量单个
+function PushGlobalVarSingle(name, value)
+    local varMsg = BuildSyncVarMsg()
+    PushSyncVar(varMsg, name, value)
+    PushAction(false, "SyncGlobalVars", varMsg)
 end
