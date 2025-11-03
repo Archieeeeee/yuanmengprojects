@@ -22,19 +22,41 @@ function CallbackCharCreated(playerId)
 end
 
 function InitClient() 
-    print("BindNotify InitClient")
-    InitVars()
-    BindNotifyAction()
+    InitMusicClient()
 end
 
 function InitServer() 
     -- RegisterEventsServer()
     -- TimerManager:AddTimer(UMath:GetRandomInt(1,10), PlaySfx, "levelcomplete")
-    InitVars()
     InitBlockProto()
-    PushAction(true, "SyncInit", {})
+    PushActionToClients(true, "SyncInit", {})
 
     InitServerTimers()
+
+    if not System:IsStandalone() then
+        InitMusic()
+    end
+    RegisterEventsServer()
+end
+
+function InitVarsClient()
+    
+end
+
+function InitVarsServer()
+    
+end
+
+function PostInitClient()
+    
+end
+
+function PostInitServer()
+    
+end
+
+function OnClientInited()
+    Creature:SetScale(haohaoyaId, 3)
 end
 
 function InitVars()
@@ -51,7 +73,7 @@ function InitVars()
     -- local varMsg = BuildSyncVarMsg()
     -- PushSyncVar(varMsg, "posOrg", posOrg)
     -- PushSyncVar(varMsg, "ymAnimes", ymAnimes)
-    -- PushAction(false, "SyncGlobalVars", varMsg)
+    -- PushActionToClients(false, "SyncGlobalVars", varMsg)
 end
 
 function PlayAnime()
@@ -63,12 +85,12 @@ function PlayAnime()
             animeDemo.cur = 1
         end
         PushGlobalVarSingle("animeDemo", animeDemo)
-        PushAction(true, "SyncPlayAnime", {})
+        PushActionToClients(true, "SyncPlayAnime", {})
     end
 
     if LoopTimerCanRun(animeDemo, "lastCount", 1) then
         PushGlobalVarSingle("animeDemo", animeDemo)
-        PushAction(true, "SyncPlayAnimeUI", {})
+        PushActionToClients(true, "SyncPlayAnimeUI", {})
     end
 
 end
@@ -99,7 +121,7 @@ end
 
 function InitServerTimers() 
     -- TimerManager:AddLoopTimer(5, GenBlock)
-    AddLoopTimerWithInit(0, 1, RunAllTimerTasks, "1sTasks")
+    
     AddTimerTask("1sTasks", "genBlock", 2, 10, GenBlock)
     AddTimerTask("1sTasks", "genBoss", 2, 30, GenBoss)
     AddTimerTask("1sTasks", "playAnime", 3, 0.9, PlayAnime)
@@ -149,14 +171,14 @@ function UpdateBoss(deltaTime, obj)
         if state.dir then
             diff = (-1 * diff)
         end
-        PushAction(true, "UpdateBossSync", {action="move", obj=obj})
+        PushActionToClients(true, "UpdateBossSync", {action="move", obj=obj})
         
         Creature:SetTargetPointMove(cid, posOrg + Engine.Vector(diff, 0, 200), 1)
     elseif IsObjStateCurAndInit(obj, "move", "toAttack") then
         -- TimerManager:AddTimer(1, function ()
         --     Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "CommonFallBackLoop", Animation.PART_NAME.FullBody)
         -- end)
-        PushAction(true, "UpdateBossSync", {action="attack", obj=obj})
+        PushActionToClients(true, "UpdateBossSync", {action="attack", obj=obj})
     end
 end
 
@@ -213,8 +235,8 @@ function GenBossAfterPlatform(pid)
         obj.bindEid = eid
         SetElementStatePhy(state, false, false, false)
         SetElementStateColli(state, false)
-        PushAction(true, "SyncElementState", state)
-        PushAction(true, "BindSpearToBoss", {eid=eid, cid=cid})
+        PushActionToClients(true, "SyncElementState", state)
+        PushActionToClients(true, "BindSpearToBoss", {eid=eid, cid=cid})
     end
 
     Element:SpawnElement(Element.SPAWN_SOURCE.Config, 1101002001034000, callback, pos, Engine.Rotator(0,0,0), Engine.Vector(1,1,1), true)
@@ -229,7 +251,7 @@ function GenBossAfterPlatform(pid)
     --     -- UpdateAllObjStates(GetUpdateDeltaTime())
     -- end)
     
-    -- PushAction(true, "PostGenBoss", {cid = cid})
+    -- PushActionToClients(true, "PostGenBoss", {cid = cid})
 end
 
 function GetElementState(elementId)
@@ -307,9 +329,7 @@ function InitBlockProto()
     protos.blockUnknown = {}
     InitProtoBlockUnknown()
 
-    TimerManager:AddTimer(1, function ()
-        Creature:SetScale(haohaoyaId, 3)
-    end)
+    
     
 end
 
@@ -363,7 +383,7 @@ function GenBlockBall()
         ServerLog("GenBlock res ", elementId)
         local color = getRandomColorRGBA()
         local state = BuildBlockState(elementId, color)
-        PushAction(true, "SyncElementState", state)
+        PushActionToClients(true, "SyncElementState", state)
         -- System:SendToAllClients(msgIdBlockState, state)
         -- SyncElementState(state)
         Element:DestroyByTime(elementId, 15)

@@ -264,16 +264,38 @@ function BindNotifyAction()
     end)
 end
 
-function PushAction(doSelf, funcName, funcArg)
-    -- local funcName = debug.getinfo(func, "n").name
+
+---@param doSelf any 是否在本机执行
+---@param dstId any 目标id, 空代表发送到服务端
+function PushAction(doSelf, funcName, funcArg, dstId, toAllClients)
     local msg = {funcName = funcName, funcArg = funcArg}
-    if not System:IsStandalone() then
-        System:SendToAllClients(MsgIdGameAction, msg)
+    if toAllClients then
+        if not System:IsStandalone() then
+            System:SendToAllClients(MsgIdGameAction, msg)
+        end
+    else
+        if dstId == nil then
+            System:SendToServer(MsgIdGameAction, msg)
+        else
+            System:SendToClient(dstId, MsgIdGameAction, msg)
+        end
     end
-    
+
     if doSelf then
         DoAction(msg)
     end
+end
+
+function PushActionToClients(doSelf, funcName, funcArg)
+    PushAction(doSelf, funcName, funcArg, nil, true)
+end
+
+function PushActionToServer(doSelf, funcName, funcArg)
+    PushAction(doSelf, funcName, funcArg, nil, false)
+end
+
+function PushActionToPlayer(doSelf, funcName, funcArg, playerId)
+    PushAction(doSelf, funcName, funcArg, playerId, false)
 end
 
 function GetUpdateDeltaTime() 
@@ -422,7 +444,8 @@ function SetElementScaleDst(eid, dstSize, orgSize)
     Element:SetScale(eid, GetScaleDstCalc(dstSize, orgSize))
 end
 
---缩放元件到指定大小
+--- 缩放元件到指定大小
+--- @param x number 长,像素单位
 function SetElementScaleDstXyz(eid, orgSize, x, y, z)
     Element:SetScale(eid, GetScaleDstCalcXyz(orgSize, x, y, z))
 end

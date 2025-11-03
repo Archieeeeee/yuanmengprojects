@@ -15,6 +15,7 @@ NetMsg = {
 ------------------------------------------------- Game Require ------------------------------------------------------
 local GameServer = require "Server.GameServer"
 local GameClient = require "Client.GameClient"
+require("GamePortal")
 
 ------------------------------------------------- Game Life ---------------------------------------------------------
 -- 初始化

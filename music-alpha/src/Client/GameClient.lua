@@ -3,7 +3,6 @@
 
 function GameClient:Init()
     Log:PrintLog("[GameClient:Init]")
-    
     -- 绑定网络协议
     System:BindNotify(NetMsg.SeverLog, self.OnSeverLog, self)
     System:BindNotify(NetMsg.S2C_ServerNtf, self.OnServerNtf, self)
@@ -17,20 +16,17 @@ end
 function GameClient:OnStart()
     Log:PrintLog("[GameClient:OnStart]")
 
-    
-    InitClient()
-    InitMusicClient()
+    InitGameClient()
     -- TimerManager:AddTimer(1, PlaySfx, "starmantwo", "piano")
     -- TimerManager:AddTimer(11, PlaySfx, "ending", "piano")
     -- TimerManager:AddTimer(21, PlaySfx, "gameover", "piano")
     -- TimerManager:AddTimer(31, PlaySfx, "levelcomplete", "piano")
     -- TimerManager:AddTimer(0, PlayMusic, "smb", "piano", 2)
-    
 end
 
 -- 游戏更新
 function GameClient:OnUpdate()
-    OnUpdateFrame(true)
+    UpdateGameClient()
 end
 
 -- 游戏结束

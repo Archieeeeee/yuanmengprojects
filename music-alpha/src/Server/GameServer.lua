@@ -1,5 +1,3 @@
-require("MainGame")
-
 local GameServer = {
     StartTime = 0, --开始时间
     GameTime = 0, --游戏时间
@@ -27,22 +25,16 @@ function GameServer:Init()
 
     -- 断线重连时，同步当前游戏状态给客户端
     System:RegisterEvent(Events.ON_PLAYER_RECONNECTED, self.OnReconnected, self)
-    RegisterEventsServer()
 end
 
 -- 游戏启动时
 function GameServer:OnStart()
     ServerLog("[GameServer:OnStart]")
 
-    InitServer()
+    InitGameServer()
 
-    if not System:IsStandalone() then
-        InitMusic()    
-    end
-    
     local eventId = System:RegisterEvent(Events.ON_PLAYER_TOUCH_ELEMENT, OnCharacterTouchUnit)
     print("register eid ", eventId)
-    
 
     self.StartTime = TimerManager:GetTimeSeconds()
     self.GameTime = 0
@@ -68,7 +60,7 @@ end
 function GameServer:OnUpdate()
     -- 当前游戏总时间
     self.GameTime = TimerManager:GetTimeSeconds() - self.StartTime
-    OnUpdateFrame(false)
+    UpdateGameServer()
 
     --每10秒给客户端发送一次广播
     self.ntfCount = self.ntfCount or 0
