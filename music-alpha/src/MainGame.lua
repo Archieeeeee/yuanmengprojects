@@ -366,7 +366,7 @@ function GenBlockUnknown(withMotion)
 end
 
 function InitProtoBlockUnknown(withMotion)
-    local genPos = Engine.Vector(-10000, -10000, -10000)
+    local genPos = posFarthest
     local awCallback = function (awId)
         -- Element:SetPosition(awId, genPos, Element.COORDINATE.World)
         SetElementScaleDstXyz(awId, cfgElements.airWall.size, 198, 198, 100)

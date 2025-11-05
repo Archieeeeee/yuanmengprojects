@@ -10,6 +10,7 @@ local serverTimeState = {}
 TaskNames = {task1s="1sTasks", taskFrame="frameTasks"}
 -- 复制元件并设置位置后,客户端通知服务器已完成,这时候需要维护这张表,新加obj时会检查这张表并标记
 local tempPosSynced = {[123]={createTs=0}}
+posFarthest = Engine.Vector(-80000, -80000, -80000)
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -810,9 +811,25 @@ function OnPosSync(msg)
 end
 
 function VectorToTable(vec)
-    return {x=vec.x, y=vec.y, z=vec.z}
+    return {x=vec.X, y=vec.Y, z=vec.Z}
 end
 
 function VectorFromTable(tab)
     return Engine.Vector(tab.x, tab.y, tab.z)
+end
+
+--检查失效的元件位置
+function DebugAnaObjects()
+    for key, value in pairs(objectsAio) do
+        local eles = Element:GetElementsInRegio(posFarthest, 200, 200, 200)
+        if eles ~= nil then
+            print("DebugAnaObjects posFarthest elements ", #eles)
+        end
+        -- local pos = Element:GetPosition(key)
+        -- if pos ~= nil then
+        --     if pos.X <= posFarthest.X or pos.Y <= posFarthest.Y or pos.Z <= posFarthest.Z then
+        --         print("ERROR obj pos ", MiscService:Table2JsonStr(value))
+        --     end
+        -- end
+    end
 end
