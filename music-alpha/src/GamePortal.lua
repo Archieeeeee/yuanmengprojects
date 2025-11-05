@@ -50,6 +50,7 @@ function PreInitGameServer()
     --添加定时任务的检查任务,后续可调用AddTimerTask
     --每隔1秒检查的定时任务
     AddLoopTimerWithInit(0, 1, RunAllTimerTasks, TaskNames.task1s)
+    AddTimerTask(TaskNames.task1s, "CheckTempPosSynced", 0, 5, CheckTempPosSynced)
     --每一帧都检查的定时任务: delay为0
     AddLoopTimerWithInit(0, 0, RunAllTimerTasks, TaskNames.taskFrame)
 end

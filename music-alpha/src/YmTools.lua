@@ -8,6 +8,8 @@ MsgIds = {commonAction=100244}
 local clientTimeState = {}
 local serverTimeState = {}
 TaskNames = {task1s="1sTasks", taskFrame="frameTasks"}
+-- 复制元件并设置位置后,客户端通知服务器已完成,这时候需要维护这张表,新加obj时会检查这张表并标记
+local tempPosSynced = {[123]={createTs=0}}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -336,9 +338,11 @@ end
 
 function AddNewObj(groupType, type, id, updateDur, updateFunc, lifeDur, destroyFunc)
     local obj = {id=id, group=groupType, type=type, updateDur=updateDur, updateFunc=updateFunc, lastUpdateTs=0,
+        posSynced = false,
         lifeDur=lifeDur, destroyFunc=destroyFunc, active=true, createTs=GetGameTimeCur(), states={}}
     AddObjState(obj, nil)
     objectsAio[id] = obj
+    CheckObjPosSynced(id)
     return obj
 end
 
@@ -483,9 +487,24 @@ function SetElementChildrenSize(eid)
     CustomProperty:SetCustomProperty(eid, "childNum", CustomProperty.PROPERTY_TYPE.Number, res.size)
 end
 
-function CopyElementAndChildren(eid, props, callbackDone)
+function CopyElementAndChildrenServerEz(eid, props, callbackDone, dstPos)
+    --syncPosRemote多数情况仍然是必须的,只不过如果立即运动仍然需要先明确设置位置因为远程调用可能尚未完成
+    CopyElementAndChildrenDetailed(eid, props, callbackDone, true, dstPos, true, false)
+end
+
+--- 复制元件
+---@param eid any
+---@param props any
+---@param callbackDone any
+---@param replicates any 元件默认的relicates属性,true时会在客户端同步生成
+---@param dstPos any 位置
+---@param syncPosRemote any 是否将位置同步到客户端,完成后会通知服务器,服务器后续可以对元件进行运动,因为服务器需要先关闭replicates,而这时候位置同步可能还未完成,所以需要明确通知服务器同步完成时间
+---@param postSetReplicates any 复制元件后是否重新设置relicates属性,通常都需要默认开,复制后关
+function CopyElementAndChildrenDetailed(eid, props, callbackDone, replicates, dstPos, syncPosRemote, postSetReplicates)
     SetElementChildrenSize(eid)
-    CopyElementAndChildrenHandle({}, eid, nil, props, callbackDone)
+    CopyElementAndChildrenHandle(
+    {replicates = replicates, dstPos = dstPos, syncPosRemote = syncPosRemote, postSetReplicates = postSetReplicates}, 
+    eid, nil, props, callbackDone)
 end
 
 function IsAllChildrenGened(srcEid, copyEid)
@@ -504,7 +523,8 @@ function GetParentIdFar(eid)
 end
 
 function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDone)
-    print("CopyElementAndChildrenHandle start ", MiscService:Table2JsonStr(srcTable), " ", eid)
+    -- print("json test ", MiscService:Table2JsonStr({pos= Engine.Vector(0,0,0)}))
+    -- print("CopyElementAndChildrenHandle start ", MiscService:Table2JsonStr(srcTable), " ", eid)
     local callback = function(copyId)
         local genNum = 0
         if srcTable.copyRootId == nil then
@@ -527,10 +547,28 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
 
         -- 检查是否全都生产了，如果生成将复制出来的父节点id找出来作为参数回调最后的方法
         if IsAllChildrenGened(srcTable.srcRootId, srcTable.copyRootId) then
+            if srcTable.dstPos ~= nil then
+                Element:SetPosition(srcTable.copyRootId, srcTable.dstPos, Element.COORDINATE.World)
+            end
+            
+            if srcTable.syncPosRemote then
+                local state = BuildElementState(srcTable.copyRootId)
+                SetElementStatePos(state, srcTable.dstPos)
+                SetElementStateDoneAction(state, "OnPosSync")
+                SyncElementState(state)
+            end
+            --
+            if srcTable.postSetReplicates ~= nil then
+                local state = BuildElementState(srcTable.copyRootId)
+                SetElementStateReplicates(state, srcTable.postSetReplicates)
+                SetElementStateEnableChildren(state)
+                SyncElementState(state)
+            end
+
             callbackDone(srcTable.copyRootId)
         end
     end
-    CopyElementSingle(eid, props, callback)
+    CopyElementSingle(eid, props, callback, srcTable.replicates)
 end
 
 function CopyEle(eid, parentId, props)
@@ -544,11 +582,11 @@ function CopyEle(eid, parentId, props)
             CopyEle(child, copyId)
         end
     end
-    CopyElementSingle(eid, props, callback)
+    CopyElementSingle(eid, props, callback, true)
 end
 
 --复制单个元件以及属性
-function CopyElementSingle(eid, props, callbackDone)
+function CopyElementSingle(eid, props, callbackDone, replicates)
     local callback = function (id)
         print("CopyElementSingle done ", eid, " ", id)
         for index, value in ipairs(props) do
@@ -561,7 +599,7 @@ function CopyElementSingle(eid, props, callbackDone)
 
         callbackDone(id)
     end
-    Element:SpawnElement(Element.SPAWN_SOURCE.Scene, eid, callback, Element:GetPosition(eid), Element:GetRotation(eid), Element:GetScale(eid), true)
+    Element:SpawnElement(Element.SPAWN_SOURCE.Scene, eid, callback, Element:GetPosition(eid), Element:GetRotation(eid), Element:GetScale(eid), replicates)
 end
 
 function DestroyElementAndChildren(eid)
@@ -621,4 +659,160 @@ function PushGlobalVarSingle(name, value)
     local varMsg = BuildSyncVarMsg()
     PushSyncVar(varMsg, name, value)
     PushActionToClients(false, "SyncGlobalVars", varMsg)
+end
+
+
+function SyncElementState(state)
+    if state.setChildren ~= nil then
+        SyncElementStateAndChildrenById(state.eid, state)
+    else
+        SyncElementStateById(state.eid, state)
+    end
+end
+
+--同步元件状态
+function SyncElementStateById(elementId, state)
+    -- print("SyncElementState ", MiscService:Table2JsonStr(state))
+    if state.replicates ~= nil then
+        print("SyncElementState SetReplicates", state.replicates)
+        Element:SetReplicates(elementId, state.replicates)
+    end
+
+    if state.colors ~= nil then
+        -- print("SyncElementState setcolor", MiscService:Table2JsonStr(state.colors))
+        for key, value in pairs(state.colors) do
+            Element:SetColor(elementId, value.n, value.c)
+        end
+    end
+
+    if state.phys ~= nil then
+        Element:SetPhysics(elementId, state.phys[1], state.phys[2], state.phys[3])
+    end
+
+    if state.colls ~= nil then
+        Element:SetEnableCollision(elementId, state.colls)
+    end
+
+    if state.mass ~= nil then
+        Element:SetMass(elementId, state.mass)
+    end
+
+    if state.motion ~= nil then
+        Element:EnableMotionUnitByIndex(elementId, state.motion.index, state.motion.enable)
+    end
+
+    if state.pos ~= nil then
+        Element:SetPosition(elementId, state.pos)
+        if state.notifyActionName ~= nil then
+            PushActionToServer(false, state.notifyActionName, {eid=elementId})
+        end
+    end
+end
+
+function SyncElementStateAndChildren(state)
+    SyncElementStateAndChildrenById(state.eid, state)
+end
+
+function SyncElementStateAndChildrenById(eid, state)
+    SyncElementStateById(eid, state)
+    if state.setChildren ~= nil and state.setChildren then
+        local children = Element:GetChildElementsFromElement(state.elementId)
+        if children ~= nil then
+            for index, child in ipairs(children) do
+                SyncElementStateAndChildrenById(child, state)
+            end
+        end
+    end
+end
+
+
+function BuildElementState(elementId)
+    return {eid=elementId}
+end
+
+function SetElementStateColor(state, idx, color)
+    if state.colors == nil then
+        state.colors = {}
+    end
+    table.insert(state.colors, {n=idx, c=color})
+end
+
+function SetElementStateMotion(state, index, enable)
+    state.motion = {index=index, enable=enable}
+end
+
+function SetElementStatePhy(state, phyAffectForce, phyCarrible, phyColliChar)
+    state.phys = {phyAffectForce, phyCarrible, phyColliChar}
+end
+
+function SetElementStateColli(state, enableColli)
+    state.colls = enableColli
+end
+
+function SetElementStateMass(state, massNum)
+    state.mass = massNum
+end
+
+function SetElementStateReplicates(state, enable)
+    state.replicates = enable
+end
+
+function SetElementStateEnableChildren(state)
+    state.setChildren = true
+end
+
+function SetElementStatePos(state, pos)
+    state.pos = pos
+end
+
+function SetElementStateDoneAction(state, actionName)
+    state.notifyActionName = actionName
+end
+
+function SetElementReplicatesAndChildren(eid, enable)
+    local state = BuildElementState(eid)
+    SetElementStateReplicates(state, enable)
+    SyncElementStateAndChildren(state)
+end
+
+function CheckTempPosSynced()
+    -- remove unactive
+    local removeIds = {}
+    for id, obj in pairs(tempPosSynced) do
+        if GetGameTimeCur() - obj.createTs > 60 then
+            table.insert(removeIds, id)
+        end
+    end
+    for index, value in ipairs(removeIds) do
+        print("remove unactive tempPosSynced ", value)
+        tempPosSynced[value] = nil
+    end
+end
+
+function CheckObjPosSynced(id)
+    local obj = objectsAio[id]
+    if obj == nil then
+        return false
+    end
+    if obj.posSynced then
+        return true
+    end
+    if tempPosSynced[id] ~= nil then
+        obj.posSynced = true
+        return true
+    end
+    return false
+end
+
+function OnPosSync(msg)
+    tempPosSynced[msg.eid] = {createTs = GetGameTimeCur()}
+    CheckObjPosSynced(msg.eid)
+end
+
+function VectorToTable(vec)
+    return {x=vec.x, y=vec.y, z=vec.z}
+end
+
+function VectorFromTable(tab)
+    return Engine.Vector(tab.x, tab.y, tab.z)
 end

@@ -97,9 +97,9 @@ end
 
 function SyncPlayAnime()
     if animeDemo.cur ~= 0 then
-        print("PlayAnime will play aaa", MiscService:Table2JsonStr(ymAnimes))
-        print("PlayAnime will play bbb", MiscService:Table2JsonStr(animeDemo))
-        print("PlayAnime will play ", ymAnimes.animeList[animeDemo.cur].v)
+        -- print("PlayAnime will play aaa", MiscService:Table2JsonStr(ymAnimes))
+        -- print("PlayAnime will play bbb", MiscService:Table2JsonStr(animeDemo))
+        -- print("PlayAnime will play ", ymAnimes.animeList[animeDemo.cur].v)
         -- PlaySfx("oneup", 0, 0.8)
         PlayThenStopAnim(0, Animation.PLAYER_TYPE.Creature, haohaoyaId, ymAnimes.animeList[animeDemo.cur].v, Animation.PART_NAME.FullBody, 4.5, 0.2)
     end
@@ -153,16 +153,34 @@ function UpdateBossSync(msg)
     end
 end
 
+function SyncMoveBlock(msg)
+    -- Element:SetReplicates(msg.id, false)
+    local eid = msg.obj.id;
+    print("SyncMoveBlock ", msg.pos.x)
+    Element:SetPosition(eid, VectorFromTable(msg.pos), Element.COORDINATE.World)
+    -- TimerManager:AddTimer(1, function ()
+    -- end)
+    if msg.obj.wm then
+        Element:LinearMotion(eid, Engine.Vector(-1, 0, 0), 500, 0, 500, 999)
+    end
+    -- local pos = Element:GetPosition(msg.id)
+    -- Element:MoveTo(msg.id, pos + Engine.Vector(-2000, 0, 0), 2, Element.CURVE.linear, nil)
+end
+
 function UpdateBlock(deltaTime, obj)
     local bid = obj.id
+    -- if not CheckObjPosSynced(bid) then
+    --     return
+    -- end
     if CanObjStateInit(obj, "move.toMove") then
         print("UpdateBlock toMove")
         
         if obj.wm then
-            local state = GetElementState(bid)
-            SetElementStateMotion(state, 1, true)
-            PushActionToClients(true, "SyncElementState", state)
+            
         end
+        -- SetElementReplicatesAndChildren(bid, false)
+        local pos = VectorToTable(Element:GetPosition(bid))
+        PushActionToClients(true, "SyncMoveBlock", {pos = pos, obj=obj})
         -- Element:EnableMotionUnitByIndex(bid, 1, true)
         -- PushActionToClients(true, "SyncUpdateBlockPos", {eid=bid})
         -- PushActionToClients(true, "SyncStartUpdateBlockTimer", {eid=bid})
@@ -255,7 +273,7 @@ function GenBossAfterPlatform(pid)
     print("GenBoss after ", MiscService:Table2JsonStr(obj))
 
     local callback = function (eid)
-        local state = GetElementState(eid)
+        local state = BuildElementState(eid)
         obj.bindEid = eid
         SetElementStatePhy(state, false, false, false)
         SetElementStateColli(state, false)
@@ -278,71 +296,14 @@ function GenBossAfterPlatform(pid)
     -- PushActionToClients(true, "PostGenBoss", {cid = cid})
 end
 
-function GetElementState(elementId)
-    return {eid=elementId}
-end
-
-function SetElementStateColor(state, idx, color)
-    if state.colors == nil then
-        state.colors = {}
-    end
-    table.insert(state.colors, {n=idx, c=color})
-end
-
-function SetElementStateMotion(state, index, enable)
-    state.motion = {index=index, enable=enable}
-end
-
-function SetElementStatePhy(state, phyAffectForce, phyCarrible, phyColliChar)
-    state.phys = {phyAffectForce, phyCarrible, phyColliChar}
-end
-
-function SetElementStateColli(state, enableColli)
-    state.colls = enableColli
-end
-
-function SetElementStateMass(state, massNum)
-    state.mass = massNum
-end
-
-
 function BuildBlockState(elementId, color1)
-    local state = GetElementState(elementId)
+    local state = BuildElementState(elementId)
     SetElementStateColor(state, 1, color1)
     SetElementStatePhy(state, true, true, true)
     SetElementStateColli(state, true)
     SetElementStateMass(state, 20)
     -- print("BuildBlockState ", MiscService:Table2JsonStr(state))
     return state
-end
-
---同步元件状态
-function SyncElementState(state)
-    -- print("SyncElementState ", MiscService:Table2JsonStr(state))
-    local elementId = state.eid
-
-    if state.colors ~= nil then
-        -- print("SyncElementState setcolor", MiscService:Table2JsonStr(state.colors))
-        for key, value in pairs(state.colors) do
-            Element:SetColor(elementId, value.n, value.c)
-        end
-    end
-
-    if state.phys ~= nil then
-        Element:SetPhysics(elementId, state.phys[1], state.phys[2], state.phys[3])
-    end
-
-    if state.colls ~= nil then
-        Element:SetEnableCollision(elementId, state.colls)
-    end
-
-    if state.mass ~= nil then
-        Element:SetMass(elementId, state.mass)
-    end
-
-    if state.motion ~= nil then
-        Element:EnableMotionUnitByIndex(elementId, state.motion.index, state.motion.enable)
-    end
 end
 
 
@@ -376,14 +337,11 @@ function GenBlockUnknown(withMotion)
     print("GenBlockUnknown start")
     local callback = function (eid)
         print("GenBlockUnknown done", eid)
-        local pos = posOrg + Engine.Vector(0, -200, 500)
-        if withMotion then
-            pos = posOrg + Engine.Vector(0, 300, 500)
-        end
-        Element:SetPosition(eid, pos, Element.COORDINATE.World)
+        
+        -- Element:SetPosition(eid, pos, Element.COORDINATE.World)
         local obj = AddNewObj(0, typeObjs.blockUnknown, eid, 0, UpdateBlock, 8, DestroyBlock)
         obj.cid = Element:GetChildElementsFromElement(eid)[1]
-        local state = GetElementState(obj.cid)
+        local state = BuildElementState(obj.cid)
         if withMotion then
             obj.wm = false
             SetElementStateColor(state, 1, "#2222FF")
@@ -396,19 +354,21 @@ function GenBlockUnknown(withMotion)
         SetObjState(obj, "move.toMove", -1, -1, 90)
         StartObjStateByName(obj, "move", "toMove")
     end
+    local pos = posOrg + Engine.Vector(0, -200, 800)
     if withMotion then
-        CopyElementAndChildren(protos.blockUnknown.id, cfgCopyProps, callback)
+        pos = posOrg + Engine.Vector(0, 300, 800)
+        CopyElementAndChildrenServerEz(protos.blockUnknown.id, cfgCopyProps, callback, pos)
     else
-        CopyElementAndChildren(protos.blockUnknownMotion.id, cfgCopyProps, callback)
+        CopyElementAndChildrenServerEz(protos.blockUnknownMotion.id, cfgCopyProps, callback, pos)
     end
     
-    -- CopyElementAndChildren(277, cfgCopyProps, callback)
+    -- CopyElementAndChildrenServerEz(277, cfgCopyProps, callback)
 end
 
 function InitProtoBlockUnknown(withMotion)
     local genPos = Engine.Vector(-10000, -10000, -10000)
     local awCallback = function (awId)
-        Element:SetPosition(awId, genPos, Element.COORDINATE.World)
+        -- Element:SetPosition(awId, genPos, Element.COORDINATE.World)
         SetElementScaleDstXyz(awId, cfgElements.airWall.size, 198, 198, 100)
         if withMotion then
             protos.blockUnknown.id = awId
@@ -426,12 +386,12 @@ function InitProtoBlockUnknown(withMotion)
     -- local awScale = GetScaleDstCalc(Engine.Vector(2.0, 2.0, 1.0), cfgElements.airWall.size)
     -- Element:SpawnElement(Element.SPAWN_SOURCE.Config, cfgElements.airWall.id, awCallback, genPos, Engine.Rotator(0,0,0), awScale, true)
     if withMotion then
-        CopyElementAndChildren(291, cfgCopyProps, awCallback)
+        CopyElementAndChildrenServerEz(291, cfgCopyProps, awCallback, genPos)
     else
-        CopyElementAndChildren(331, cfgCopyProps, awCallback)
+        CopyElementAndChildrenServerEz(331, cfgCopyProps, awCallback, genPos)
     end
     
-    -- CopyElementAndChildren(303, cfgCopyProps, awCallback)
+    -- CopyElementAndChildrenServerEz(303, cfgCopyProps, awCallback)
 end
 
 function GenBlockBall() 
