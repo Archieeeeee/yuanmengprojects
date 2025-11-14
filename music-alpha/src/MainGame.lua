@@ -150,7 +150,7 @@ function SyncMoveBlock(msg)
     -- Element:SetReplicates(msg.id, false)
     local eid = msg.obj.id;
     print("SyncMoveBlock ", msg.pos.x)
-    Element:SetPosition(eid, VectorFromTable(msg.pos), Element.COORDINATE.World)
+    -- Element:SetPosition(eid, VectorFromTable(msg.pos), Element.COORDINATE.World)
     -- TimerManager:AddTimer(1, function ()
     -- end)
     if msg.obj.wm then
@@ -305,8 +305,8 @@ function GenAirWall(callback)
         SetElementScaleDstXyz(awId, cfgElements.airWall.size, 198, 198, 100)
         callback(awId)
     end
-    -- CopyElementAndChildrenServerEz(331, cfgCopyProps, awCallback, genPos)
-    CopyElementAndChildrenServerEz(337, cfgCopyProps, awCallback, genPos)
+    CopyElementAndChildrenServerEz(331, cfgCopyProps, awCallback, genPos)
+    -- CopyElementAndChildrenServerEz(337, cfgCopyProps, awCallback, genPos)
 end
 
 function GenBrickDebris(pid, locX, locY)
@@ -318,9 +318,9 @@ function GenBrickDebris(pid, locX, locY)
     -- false, nil, cfgElements.cube.size,
     -- 100, 200, 100, nil)
 
-    CopyElementAndChildrenFull(334, cfgCopyProps, callback, true, pos,
+    CopyElementAndChildrenFull(elesInScene.brick, cfgCopyProps, callback, true, pos,
     false, nil, cfgElements.cube.size,
-    100, 200, 100, nil)
+    200, 100, 100, nil)
 end
 
 --准备砖头类型原型
@@ -364,7 +364,7 @@ function SyncInit()
 end
 
 function GenBlock()
-    local rd = UMath:GetRandomInt(2,2)
+    local rd = UMath:GetRandomInt(1,2)
     if rd == 1 then
         GenBlockUnknown(false)
         GenBlockUnknown(true)

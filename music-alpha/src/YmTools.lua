@@ -333,7 +333,7 @@ function ServerLog(...)
 end
 
 function DoAction(msg)
-    -- print("DoAction ", MiscService:Table2JsonStr(msg))
+    print("DoAction ", MiscService:Table2JsonStr(msg))
     _G[msg.funcName](msg.funcArg)
 end
 
@@ -572,16 +572,7 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
 
         -- 检查是否全都生成了，如果生成将复制出来的父节点id找出来作为参数回调最后的方法
         if IsAllChildrenGened(srcTable.srcRootId, srcTable.copyRootId) then
-            --
-            if srcTable.postSetReplicates ~= nil then
-                local stateRp = BuildElementState(srcTable.copyRootId)
-                SetElementStateReplicates(stateRp, srcTable.postSetReplicates)
-                SetElementStateEnableChildren(stateRp)
-                -- TimerManager:AddTimer(1, function ()
-                --     SyncElementState(stateRp)
-                -- end)
-                SyncElementState(stateRp)
-            end
+            
 
             local state = BuildElementState(srcTable.copyRootId)
             local toSetState = false
@@ -609,15 +600,24 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
                         -- TimerManager:AddTimer(1, function ()
                         --     PushActionToClients(true, "SyncElementState", state)
                         -- end)
-                        -- PushActionToClients(false, "SyncElementState", state)
-                        TimerManager:AddTimer(1, function ()
-                            PushActionToClients(false, "SyncElementState", state)
-                        end)
+                        PushActionToClients(false, "SyncElementState", state)
+                        -- TimerManager:AddTimer(1, function ()
+                        --     PushActionToClients(false, "SyncElementState", state)
+                        -- end)
                     end
                 end
             end
 
-            
+            --
+            if srcTable.postSetReplicates ~= nil then
+                local stateRp = BuildElementState(srcTable.copyRootId)
+                SetElementStateReplicates(stateRp, srcTable.postSetReplicates)
+                SetElementStateEnableChildren(stateRp)
+                -- TimerManager:AddTimer(1, function ()
+                --     SyncElementState(stateRp)
+                -- end)
+                SyncElementState(stateRp)
+            end
 
             callbackDone(srcTable.copyRootId)
         end
