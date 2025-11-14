@@ -574,13 +574,13 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
         if IsAllChildrenGened(srcTable.srcRootId, srcTable.copyRootId) then
             --
             if srcTable.postSetReplicates ~= nil then
-                local state = BuildElementState(srcTable.copyRootId)
-                SetElementStateReplicates(state, srcTable.postSetReplicates)
-                SetElementStateEnableChildren(state)
-                TimerManager:AddFrame(1, function ()
-                    SyncElementState(state)
-                end)
-                -- SyncElementState(state)
+                local stateRp = BuildElementState(srcTable.copyRootId)
+                SetElementStateReplicates(stateRp, srcTable.postSetReplicates)
+                SetElementStateEnableChildren(stateRp)
+                -- TimerManager:AddTimer(1, function ()
+                --     SyncElementState(stateRp)
+                -- end)
+                SyncElementState(stateRp)
             end
 
             local state = BuildElementState(srcTable.copyRootId)
@@ -609,7 +609,10 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
                         -- TimerManager:AddTimer(1, function ()
                         --     PushActionToClients(true, "SyncElementState", state)
                         -- end)
-                        PushActionToClients(false, "SyncElementState", state)
+                        -- PushActionToClients(false, "SyncElementState", state)
+                        TimerManager:AddTimer(1, function ()
+                            PushActionToClients(false, "SyncElementState", state)
+                        end)
                     end
                 end
             end
@@ -714,7 +717,8 @@ end
 
 
 function SyncElementState(state)
-    print("SyncElementState ", state.eid, " ", Element:GetType(state.eid))
+    print("SyncElementState ", state.eid, " ", Element:GetType(state.eid), " ", Element:GetPosition(state.eid))
+    
     
     if state.setChildren ~= nil then
         SyncElementStateAndChildrenById(state.eid, state)
@@ -755,7 +759,8 @@ function SyncElementStateById(elementId, state)
     end
 
     if state.pos ~= nil then
-        Element:SetPosition(elementId, state.pos, Element.COORDINATE.World)
+        print("SyncElementState pos 1")
+        Element:SetPosition(elementId, VectorFromTable(state.pos), Element.COORDINATE.World)
         if state.notifyActionName ~= nil then
             PushActionToServer(false, state.notifyActionName, {eid=elementId})
         end
@@ -818,8 +823,10 @@ function SetElementStateEnableChildren(state)
     state.setChildren = true
 end
 
+
+
 function SetElementStatePos(state, pos)
-    state.pos = pos
+    state.pos = VectorToTable(pos)
 end
 
 function SetElementStateScale(state, scale)
