@@ -597,13 +597,7 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
                     --初始同步但是后续不要求同步,这种情况需要把状态远程同步给客户端
                     if srcTable.replicates and (not srcTable.postSetReplicates) then
                         SetElementStateDoneAction(state, "OnPosSync")
-                        -- TimerManager:AddTimer(1, function ()
-                        --     PushActionToClients(true, "SyncElementState", state)
-                        -- end)
                         PushActionToClients(false, "SyncElementState", state)
-                        -- TimerManager:AddTimer(1, function ()
-                        --     PushActionToClients(false, "SyncElementState", state)
-                        -- end)
                     end
                 end
             end
@@ -613,9 +607,6 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
                 local stateRp = BuildElementState(srcTable.copyRootId)
                 SetElementStateReplicates(stateRp, srcTable.postSetReplicates)
                 SetElementStateEnableChildren(stateRp)
-                -- TimerManager:AddTimer(1, function ()
-                --     SyncElementState(stateRp)
-                -- end)
                 SyncElementState(stateRp)
             end
 
