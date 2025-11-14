@@ -333,7 +333,7 @@ function ServerLog(...)
 end
 
 function DoAction(msg)
-    print("DoAction ", MiscService:Table2JsonStr(msg))
+    -- print("DoAction ", MiscService:Table2JsonStr(msg))
     _G[msg.funcName](msg.funcArg)
 end
 
@@ -490,7 +490,33 @@ end
 
 function CopyElementAndChildrenServerEz(eid, props, callbackDone, dstPos)
     --syncPosRemote多数情况仍然是必须的,只不过如果立即运动仍然需要先明确设置位置因为远程调用可能尚未完成
-    CopyElementAndChildrenDetailed(eid, props, callbackDone, true, dstPos, true, false)
+    local param = BuildCopyEleParam(true, dstPos, true, false, nil)
+    CopyElementAndChildrenDetailed(eid, props, callbackDone, param)
+end
+
+function CopyElementAndChildrenServerEzScale(eid, props, callbackDone, dstPos, orgSize, x, y, z, scaleNum)
+    local param = BuildCopyEleParam(true, dstPos, true, false, nil)
+    SetCopyEleParamScale(param, orgSize, x, y, z, scaleNum)
+    CopyElementAndChildrenDetailed(eid, props, callbackDone, param)
+end
+
+function CopyElementAndChildrenFull(eid, props, callbackDone, replicates, dstPos, syncStateRemote, postSetReplicates, orgSize, x, y, z, scaleNum)
+    local param = BuildCopyEleParam(replicates, dstPos, syncStateRemote, postSetReplicates, nil)
+    SetCopyEleParamScale(param, orgSize, x, y, z, scaleNum)
+    CopyElementAndChildrenDetailed(eid, props, callbackDone, param)
+end
+
+function BuildCopyEleParam(replicates, dstPos, syncStateRemote, postSetReplicates, dstScale)
+    return {replicates = replicates, dstPos = dstPos, syncStateRemote = syncStateRemote, postSetReplicates = postSetReplicates, dstScale = dstScale}
+end
+
+function SetCopyEleParamScale(param, orgSize, x, y, z, scaleNum)
+    if orgSize ~= nil then
+        param.dstScale = {orgSize=orgSize, x=x, y=y, z=z}
+    end
+    if scaleNum ~= nil then
+        param.dstScale = {scaleNum = scaleNum}
+    end
 end
 
 --- 复制元件
@@ -499,13 +525,11 @@ end
 ---@param callbackDone any
 ---@param replicates any 元件默认的relicates属性,true时会在客户端同步生成
 ---@param dstPos any 位置
----@param syncPosRemote any 是否将位置同步到客户端,完成后会通知服务器,服务器后续可以对元件进行运动,因为服务器需要先关闭replicates,而这时候位置同步可能还未完成,所以需要明确通知服务器同步完成时间
+---@param syncStateRemote any 是否将位置同步到客户端,完成后会通知服务器,服务器后续可以对元件进行运动,因为服务器需要先关闭replicates,而这时候位置同步可能还未完成,所以需要明确通知服务器同步完成时间
 ---@param postSetReplicates any 复制元件后是否重新设置relicates属性,通常都需要默认开,复制后关
-function CopyElementAndChildrenDetailed(eid, props, callbackDone, replicates, dstPos, syncPosRemote, postSetReplicates)
+function CopyElementAndChildrenDetailed(eid, props, callbackDone, param)
     SetElementChildrenSize(eid)
-    CopyElementAndChildrenHandle(
-    {replicates = replicates, dstPos = dstPos, syncPosRemote = syncPosRemote, postSetReplicates = postSetReplicates}, 
-    eid, nil, props, callbackDone)
+    CopyElementAndChildrenHandle( param, eid, nil, props, callbackDone)
 end
 
 function IsAllChildrenGened(srcEid, copyEid)
@@ -546,25 +570,51 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
             end
         end
 
-        -- 检查是否全都生产了，如果生成将复制出来的父节点id找出来作为参数回调最后的方法
+        -- 检查是否全都生成了，如果生成将复制出来的父节点id找出来作为参数回调最后的方法
         if IsAllChildrenGened(srcTable.srcRootId, srcTable.copyRootId) then
-            if srcTable.dstPos ~= nil then
-                Element:SetPosition(srcTable.copyRootId, srcTable.dstPos, Element.COORDINATE.World)
-            end
-            
-            if srcTable.syncPosRemote then
-                local state = BuildElementState(srcTable.copyRootId)
-                SetElementStatePos(state, srcTable.dstPos)
-                SetElementStateDoneAction(state, "OnPosSync")
-                SyncElementState(state)
-            end
             --
             if srcTable.postSetReplicates ~= nil then
                 local state = BuildElementState(srcTable.copyRootId)
                 SetElementStateReplicates(state, srcTable.postSetReplicates)
                 SetElementStateEnableChildren(state)
-                SyncElementState(state)
+                TimerManager:AddFrame(1, function ()
+                    SyncElementState(state)
+                end)
+                -- SyncElementState(state)
             end
+
+            local state = BuildElementState(srcTable.copyRootId)
+            local toSetState = false
+            if srcTable.dstPos ~= nil then
+                toSetState = true
+                SetElementStatePos(state, srcTable.dstPos)
+            end
+
+            if srcTable.dstScale ~= nil then
+                toSetState = true
+                if srcTable.dstScale.orgSize ~= nil then
+                    SetElementStateScale(state, GetScaleDstCalcXyz(srcTable.dstScale.orgSize, srcTable.dstScale.x, srcTable.dstScale.y, srcTable.dstScale.z))
+                else
+                    SetElementStateScale(state, srcTable.dstScale.scaleNum)
+                end
+            end
+
+            if toSetState then
+                SyncElementState(state)
+                --检查状态是否需要同步到远端
+                if srcTable.replicates ~= nil and srcTable.postSetReplicates ~= nil then
+                    --初始同步但是后续不要求同步,这种情况需要把状态远程同步给客户端
+                    if srcTable.replicates and (not srcTable.postSetReplicates) then
+                        SetElementStateDoneAction(state, "OnPosSync")
+                        -- TimerManager:AddTimer(1, function ()
+                        --     PushActionToClients(true, "SyncElementState", state)
+                        -- end)
+                        PushActionToClients(false, "SyncElementState", state)
+                    end
+                end
+            end
+
+            
 
             callbackDone(srcTable.copyRootId)
         end
@@ -664,6 +714,8 @@ end
 
 
 function SyncElementState(state)
+    print("SyncElementState ", state.eid, " ", Element:GetType(state.eid))
+    
     if state.setChildren ~= nil then
         SyncElementStateAndChildrenById(state.eid, state)
     else
@@ -703,10 +755,14 @@ function SyncElementStateById(elementId, state)
     end
 
     if state.pos ~= nil then
-        Element:SetPosition(elementId, state.pos)
+        Element:SetPosition(elementId, state.pos, Element.COORDINATE.World)
         if state.notifyActionName ~= nil then
             PushActionToServer(false, state.notifyActionName, {eid=elementId})
         end
+    end
+
+    if state.scale ~= nil then
+        Element:SetScale(elementId, state.scale)
     end
 end
 
@@ -764,6 +820,10 @@ end
 
 function SetElementStatePos(state, pos)
     state.pos = pos
+end
+
+function SetElementStateScale(state, scale)
+    state.scale = scale
 end
 
 function SetElementStateDoneAction(state, actionName)
@@ -832,4 +892,18 @@ function DebugAnaObjects()
         --     end
         -- end
     end
+end
+
+--把预设组件创建到场景
+function SpawnElementToScene(eleId, pos, callbackFunc, orgSize, x, y, z)
+    local scale = GetScaleDstCalcXyz(orgSize, x, y, z)
+    local callback = function (eid)
+        callbackFunc(eid)
+    end
+    Element:SpawnElement(Element.SPAWN_SOURCE.Config, eleId, callback, pos, Engine.Rotator(0,0,0), scale, true)
+end
+
+--一般销毁
+function CommonDestroy(deltaTime, obj)
+    DestroyElementAndChildren(obj.id)
 end

@@ -5,7 +5,7 @@ local platformId = 229
 local msgIdBlockState = 100115
 posOrg = Engine.Vector(0, 0, 0)
 
-local typeObjs = {boss = 1000, blockUnknown=101}
+local typeObjs = {boss = 1000, blockUnknown=101, brick=103}
 local cfgAirWallId = 1105000000000074
 local cfgElements = {}
 local protos = {}
@@ -14,6 +14,7 @@ local cfgDataNames = {"ymAnimes"}
 local haohaoyaId = 327
 animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
 ymAnimes = {}
+local elesInScene = {airwall=331}
 
 
 function CallbackCharCreated(playerId)
@@ -298,6 +299,50 @@ function BuildBlockState(elementId, color1)
     return state
 end
 
+function GenAirWall(callback)
+    local genPos = posFarthest
+    local awCallback = function (awId)
+        SetElementScaleDstXyz(awId, cfgElements.airWall.size, 198, 198, 100)
+        callback(awId)
+    end
+    -- CopyElementAndChildrenServerEz(331, cfgCopyProps, awCallback, genPos)
+    CopyElementAndChildrenServerEz(337, cfgCopyProps, awCallback, genPos)
+end
+
+function GenBrickDebris(pid, locX, locY)
+    local pos = posFarthest + Engine.Vector(locX * 100, 0, locY * 100 + 10)
+    local callback = function (eid)
+        Element:BindingToElement(eid, pid)
+    end
+    -- CopyElementAndChildrenFull(elesInScene.brick, cfgCopyProps, callback, true, pos,
+    -- false, nil, cfgElements.cube.size,
+    -- 100, 200, 100, nil)
+
+    CopyElementAndChildrenFull(334, cfgCopyProps, callback, true, pos,
+    false, nil, cfgElements.cube.size,
+    100, 200, 100, nil)
+end
+
+--准备砖头类型原型
+function PrepareBrick()
+    local callback = function (eid)
+        elesInScene.brick = eid
+        InitProtoBrick()
+    end
+    SpawnElementToScene(1101002001038000, posFarthest, callback, cfgElements.cube.size, 100, 100, 100)
+end
+
+--生成砖头
+function InitProtoBrick()
+    local callback = function (awId)
+        protos.blockBrick.id = awId
+        GenBrickDebris(awId, 0, 0)
+        GenBrickDebris(awId, 0, 1)
+        GenBrickDebris(awId, 1, 0)
+        GenBrickDebris(awId, 1, 1)
+    end
+    GenAirWall(callback)
+end
 
 
 function InitBlockProto()
@@ -306,9 +351,10 @@ function InitBlockProto()
     cfgElements.cubeNight = {id=1101002001105000, size=Engine.Vector(1,1,1)}
     protos.blockUnknown = {}
     protos.blockUnknownMotion = {}
+    protos.blockBrick = {}
     InitProtoBlockUnknown(false)
     InitProtoBlockUnknown(true)
-
+    PrepareBrick()
     
     
 end
@@ -318,11 +364,33 @@ function SyncInit()
 end
 
 function GenBlock()
-    local rd = UMath:GetRandomInt(1,1)
+    local rd = UMath:GetRandomInt(2,2)
     if rd == 1 then
         GenBlockUnknown(false)
         GenBlockUnknown(true)
+    elseif rd == 2 then
+        GenBlockBrick()
     end
+end
+
+function UpdateBrick(deltaTime, obj)
+    local pos = Element:GetPosition(obj.id)
+    -- Element:SetPosition(obj.id, pos + Engine.Vector(deltaTime*100, 0, 0), Element.COORDINATE.World)
+    -- Element:SetPosition(obj.id, posOrg + Engine.Vector(0, 0, 800), Element.COORDINATE.World)
+end
+
+
+function GenBlockBrick()
+    ServerLog("GenBlockBrick startsss ")
+    print("GenBlockBrick start")
+    local pos = posOrg + Engine.Vector(0, -200, 650)
+    local callback = function (eid)
+        AddNewObj(0, typeObjs.brick, eid, 0, UpdateBrick, 7, CommonDestroy)
+    end
+    -- CopyElementAndChildrenServerEz(protos.blockBrick.id, cfgCopyProps, callback, pos)
+    CopyElementAndChildrenFull(protos.blockBrick.id, cfgCopyProps, callback, true, pos,
+    true, false,
+    nil, 0, 0, 0, nil)
 end
 
 function GenBlockUnknown(withMotion)
