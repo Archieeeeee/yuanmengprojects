@@ -41,6 +41,10 @@ local testStates = {
 }
 local objectsAio = {[27007]={id=27007, state="move", states=testStates }}
 
+function GetObject(id)
+    return objectsAio[id]
+end
+
 --name 是空表示添加到obj  "xx.aa.cccc"
 function AddObjState(obj, name)
     print("before AddObjState ", name, " ", MiscService:Table2JsonStr(obj))
@@ -925,4 +929,21 @@ end
 --一般销毁
 function CommonDestroy(deltaTime, obj)
     DestroyElementAndChildren(obj.id)
+end
+
+function GetElementPosString(eid)
+    return VectorToString(Element:GetPosition(eid))
+end
+
+function VectorToString(vec)
+    return MiscService:Table2JsonStr(VectorToTable(vec))
+end
+
+function SetCustomPropBool(eid, name, value)
+    CustomProperty:SetCustomProperty(eid, name, CustomProperty.PROPERTY_TYPE.Bool, value)
+end
+
+function CheckCustomPropBoolHas(eid, name)
+    local v = CustomProperty:GetCustomProperty(eid, name, CustomProperty.PROPERTY_TYPE.Bool)
+    return (v ~= nil)
 end

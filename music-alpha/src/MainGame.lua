@@ -9,7 +9,7 @@ local typeObjs = {boss = 1000, blockUnknown=101, brick=103}
 local cfgAirWallId = 1105000000000074
 local cfgElements = {}
 local protos = {}
-local cfgCopyProps = {}
+local cfgCopyProps = {"debris"}
 local cfgDataNames = {"ymAnimes"}
 local haohaoyaId = 327
 animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
@@ -305,35 +305,62 @@ function GenAirWall(callback)
     local awCallback = function (awId)
         callback(awId)
     end
+
+    -- SetElementReplicatesAndChildren(337, false)
     -- 337  331
     CopyElementAndChildrenFull(331, cfgCopyProps, awCallback, true, genPos,
     false, nil, cfgElements.airWall.size,
     198, 198, 100, nil)
+
+    
+    -- CopyElementAndChildrenFull(341, cfgCopyProps, function ()
+    -- end, true, genPos,
+    -- false, true, cfgElements.airWall.size,
+    -- 100, 100, 500, nil)
 end
 
-function GenBrickDebris(pid, locX, locY)
+--缩放元件位置由于需要同步,如果在同步之前绑定则会出问题,所以组装元件需要关闭同步,组装完成后再打开
+function GenBrickDebris(pid, locX, locY, done)
     -- local pos = posFarthest + Engine.Vector(locX * 100, 0, locY * 100 + 10)
     local pos = posOrg + Engine.Vector(locX * 100, 0, locY * 100 + 10)
     local callback = function (eid)
-        Element:BindingToElement(eid, pid)
+        ServerLog("GenBrickDebris ", eid, " ", pid, " ", GetElementPosString(eid), " ", VectorToString(posOrg))
+        SetCustomPropBool(eid, "debris", true)
+        TimerManager:AddTimer(0, function ()
+            Element:BindingToElement(eid, pid)
+        end)
+        -- Element:BindingToElement(eid, pid)
+        -- Element:SetPosition(pid, posOrg + Engine.Vector(0, 0, 300), Element.COORDINATE.World)
+        if done then
+            TimerManager:AddTimer(8, function ()
+                -- Element:SetReplicates(pid, true)
+                -- SetElementReplicatesAndChildren(pid, true)
+            end)
+        end
     end
     -- CopyElementAndChildrenFull(elesInScene.brick, cfgCopyProps, callback, true, pos,
     -- false, nil, cfgElements.cube.size,
     -- 100, 200, 100, nil)
 
+    -- elesInScene.brick 341
     CopyElementAndChildrenFull(elesInScene.brick, cfgCopyProps, callback, true, pos,
     false, nil, cfgElements.cube.size,
-    100, 500, 100, nil)
+    100, 200, 100, nil)
+
+    -- CopyElementAndChildrenFull(341, cfgCopyProps, callback, true, pos,
+    -- false, true, cfgElements.cube.size,
+    -- 100, 500, 100, nil)
 end
 
---准备砖头类型原型
+--准备砖头类型原型,同步是可以的,因为没有后续缩放调整等
 function PrepareBrick()
     local callback = function (eid)
         elesInScene.brick = eid
         InitProtoBrick()
     end
-    local pos = posOrg + Engine.Vector(0, 0, 300)
+    local pos = posOrg + Engine.Vector(0, 0, 1200)
     -- SpawnElementToScene(1101002001038000, posFarthest, callback, cfgElements.cube.size, 100, 100, 100)
+    -- SetElementReplicatesAndChildren(334, false)
     CopyElementAndChildrenFull(334, cfgCopyProps, callback, true, pos,
     false, nil, nil,
     0, 0, 0, nil)
@@ -343,10 +370,13 @@ end
 function InitProtoBrick()
     local callback = function (awId)
         protos.blockBrick.id = awId
-        GenBrickDebris(awId, 0, 0)
-        -- GenBrickDebris(awId, 0, 1)
-        -- GenBrickDebris(awId, 1, 0)
-        -- GenBrickDebris(awId, 1, 1)
+        -- TimerManager:AddTimer(1, function ()
+        --     GenBrickDebris(awId, 0, 0)
+        -- end)
+        GenBrickDebris(awId, 0, 0, false)
+        -- GenBrickDebris(awId, 0, 1, false)
+        -- GenBrickDebris(awId, 1, 0, false)
+        GenBrickDebris(awId, 1, 1, true)
     end
     GenAirWall(callback)
 end
@@ -371,12 +401,12 @@ function SyncInit()
 end
 
 function GenBlock()
-    local rd = UMath:GetRandomInt(1,1)
+    local rd = UMath:GetRandomInt(2,2)
     if rd == 1 then
         GenBlockUnknown(false)
         GenBlockUnknown(true)
     elseif rd == 2 then
-        -- GenBlockBrick()
+        GenBlockBrick()
     end
 end
 
@@ -384,15 +414,29 @@ function UpdateBrick(deltaTime, obj)
     local pos = Element:GetPosition(obj.id)
     -- Element:SetPosition(obj.id, pos + Engine.Vector(deltaTime*100, 0, 0), Element.COORDINATE.World)
     -- Element:SetPosition(obj.id, posOrg + Engine.Vector(0, 0, 800), Element.COORDINATE.World)
+    if CanObjStateInit(obj, "move.toMove") then
+        local pos = VectorToTable(Element:GetPosition(obj.id))
+        PushActionToClients(true, "SyncMoveBrick", {pos = pos, obj=obj})
+        -- Element:EnableMotionUnitByIndex(bid, 1, true)
+        -- PushActionToClients(true, "SyncUpdateBlockPos", {eid=bid})
+        -- PushActionToClients(true, "SyncStartUpdateBlockTimer", {eid=bid})
+    end
+end
+
+function SyncMoveBrick(msg)
+    Element:LinearMotion(msg.obj.id, Engine.Vector(-1, 0, 0), 500, 0, 500, 999)
 end
 
 
 function GenBlockBrick()
     ServerLog("GenBlockBrick startsss ")
     print("GenBlockBrick start")
-    local pos = posOrg + Engine.Vector(0, -200, 650)
+    local pos = posOrg + Engine.Vector(0, -200, 550)
     local callback = function (eid)
-        AddNewObj(0, typeObjs.brick, eid, 0, UpdateBrick, 7, CommonDestroy)
+        local obj = AddNewObj(0, typeObjs.brick, eid, 0, UpdateBrick, 17, CommonDestroy)
+        AddObjState(obj, "move.toMove")
+        SetObjState(obj, "move.toMove", -1, -1, 90)
+        StartObjStateByName(obj, "move", "toMove")
     end
     -- CopyElementAndChildrenServerEz(protos.blockBrick.id, cfgCopyProps, callback, pos)
     CopyElementAndChildrenFull(protos.blockBrick.id, cfgCopyProps, callback, true, pos,
@@ -478,6 +522,51 @@ function GenBlockBall()
     Element:SpawnElement(Element.SPAWN_SOURCE.Config, 1101002001037010, callback, pos + Engine.Vector(1500, 0, 1500), Engine.Rotator(0,0,0), Engine.Vector(1, 1, 1), true)
 end
 
+function TouchBrick(obj)
+    -- local children = Element:GetChildElementsFromElement(obj.id)
+    -- for index, cid in ipairs(children) do
+    --     if CheckCustomPropBoolHas(cid, "debris") then
+    --         Element:UnBinding(cid)
+    --     end
+    -- end
+    PushActionToClients(true, "SyncTouchBrick", obj)
+end
+
+function SyncTouchBrick(obj)
+    local children = Element:GetChildElementsFromElement(obj.id)
+    for index, cid in ipairs(children) do
+        if CheckCustomPropBoolHas(cid, "debris") then
+            Element:UnBinding(cid)
+            local state = BuildElementState(cid)
+            SetElementStatePhy(state, true, false, false)
+            SetElementStateColli(state, true)
+            -- TimerManager:AddTimer(0.2, function ()
+            --     Element:AddForce(cid, Engine.Vector(0, 0, -1950))
+            -- end)
+            TimerManager:AddTimer(0.3, function ()
+                Element:SetEnableCollision(cid, false)
+            end)
+            SyncElementState(state)
+            Element:AddForce(cid, Engine.Vector(0, 0, 950))
+            Element:DestroyByTime(cid, 3)
+        end
+    end
+    CommonDestroy(0, obj)
+    
+end
+
+function CallbackPlayerTouchEle(eid, player)
+    print("CallbackPlayerTouchEle ", characterId, " ", eid)
+    local obj = GetObject(eid)
+    if obj == nil then
+        return
+    end
+    if obj.type == typeObjs.brick then
+        TouchBrick(obj)
+    end
+end
+
 function RegisterEventsServer() 
     System:RegisterEvent(Events.ON_CHARACTER_CREATED, CallbackCharCreated)
+    System:RegisterEvent(Events.ON_ELEMENT_TOUCH_PLAYER, CallbackPlayerTouchEle)
 end
