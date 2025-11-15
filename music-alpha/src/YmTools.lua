@@ -272,7 +272,14 @@ end
 ---@param doSelf any 是否在本机执行
 ---@param dstId any 目标id, 空代表发送到服务端
 function PushAction(doSelf, funcName, funcArg, dstId, toAllClients)
+    -- print("PushAction ", doSelf, " ", toAllClients, " ", funcName)
     local msg = {funcName = funcName, funcArg = funcArg}
+    --如果是toAllClients并且是单机,那么本机一定会执行,就不需要重复了
+    if toAllClients and System:IsStandalone() then
+        DoAction(msg)
+        return
+    end
+
     if toAllClients then
         if not System:IsStandalone() then
             System:SendToAllClients(MsgIds.commonAction, msg)
@@ -582,11 +589,13 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
             end
 
             if srcTable.dstScale ~= nil then
+                ServerLog("copy ele set state dstScale ServerLog ", srcTable.copyRootId)
+                SetElementStateDesc(state, "copy ele set state dstScale")
                 toSetState = true
                 if srcTable.dstScale.orgSize ~= nil then
-                    SetElementStateScale(state, GetScaleDstCalcXyz(srcTable.dstScale.orgSize, srcTable.dstScale.x, srcTable.dstScale.y, srcTable.dstScale.z))
+                    SetElementStateScaleVec(state, GetScaleDstCalcXyz(srcTable.dstScale.orgSize, srcTable.dstScale.x, srcTable.dstScale.y, srcTable.dstScale.z))
                 else
-                    SetElementStateScale(state, srcTable.dstScale.scaleNum)
+                    SetElementStateScaleNum(state, srcTable.dstScale.scaleNum)
                 end
             end
 
@@ -708,7 +717,7 @@ end
 
 
 function SyncElementState(state)
-    print("SyncElementState ", state.eid, " ", Element:GetType(state.eid), " ", Element:GetPosition(state.eid))
+    print("SyncElementState ", state.eid, " ", Element:GetType(state.eid), " ", Element:GetPosition(state.eid), " ", MiscService:Table2JsonStr(state))
     
     
     if state.setChildren ~= nil then
@@ -720,7 +729,7 @@ end
 
 --同步元件状态
 function SyncElementStateById(elementId, state)
-    -- print("SyncElementState ", MiscService:Table2JsonStr(state))
+    print("SyncElementState ", MiscService:Table2JsonStr(state))
     if state.replicates ~= nil then
         print("SyncElementState SetReplicates", state.replicates)
         Element:SetReplicates(elementId, state.replicates)
@@ -758,7 +767,11 @@ function SyncElementStateById(elementId, state)
     end
 
     if state.scale ~= nil then
-        Element:SetScale(elementId, state.scale)
+        if state.scale.scaleVec ~= nil then
+            Element:SetScale(elementId, VectorFromTable(state.scale.scaleVec))
+        else
+            Element:SetScale(elementId, state.scale.scaleNum)
+        end
     end
 end
 
@@ -820,8 +833,16 @@ function SetElementStatePos(state, pos)
     state.pos = VectorToTable(pos)
 end
 
-function SetElementStateScale(state, scale)
-    state.scale = scale
+function SetElementStateScaleVec(state, scaleVec)
+    state.scale = {scaleVec = VectorToTable(scaleVec)}
+end
+
+function SetElementStateScaleNum(state, scaleNum)
+    state.scale = {scaleNum = scaleNum}
+end
+
+function SetElementStateDesc(state, desc)
+    state.desc = desc
 end
 
 function SetElementStateDoneAction(state, actionName)

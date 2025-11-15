@@ -300,17 +300,20 @@ function BuildBlockState(elementId, color1)
 end
 
 function GenAirWall(callback)
-    local genPos = posFarthest
+    -- local genPos = posFarthest
+    local genPos = posOrg
     local awCallback = function (awId)
-        SetElementScaleDstXyz(awId, cfgElements.airWall.size, 198, 198, 100)
         callback(awId)
     end
-    CopyElementAndChildrenServerEz(331, cfgCopyProps, awCallback, genPos)
-    -- CopyElementAndChildrenServerEz(337, cfgCopyProps, awCallback, genPos)
+    -- 337  331
+    CopyElementAndChildrenFull(331, cfgCopyProps, awCallback, true, genPos,
+    false, nil, cfgElements.airWall.size,
+    198, 198, 100, nil)
 end
 
 function GenBrickDebris(pid, locX, locY)
-    local pos = posFarthest + Engine.Vector(locX * 100, 0, locY * 100 + 10)
+    -- local pos = posFarthest + Engine.Vector(locX * 100, 0, locY * 100 + 10)
+    local pos = posOrg + Engine.Vector(locX * 100, 0, locY * 100 + 10)
     local callback = function (eid)
         Element:BindingToElement(eid, pid)
     end
@@ -320,7 +323,7 @@ function GenBrickDebris(pid, locX, locY)
 
     CopyElementAndChildrenFull(elesInScene.brick, cfgCopyProps, callback, true, pos,
     false, nil, cfgElements.cube.size,
-    200, 100, 100, nil)
+    100, 500, 100, nil)
 end
 
 --准备砖头类型原型
@@ -329,7 +332,11 @@ function PrepareBrick()
         elesInScene.brick = eid
         InitProtoBrick()
     end
-    SpawnElementToScene(1101002001038000, posFarthest, callback, cfgElements.cube.size, 100, 100, 100)
+    local pos = posOrg + Engine.Vector(0, 0, 300)
+    -- SpawnElementToScene(1101002001038000, posFarthest, callback, cfgElements.cube.size, 100, 100, 100)
+    CopyElementAndChildrenFull(334, cfgCopyProps, callback, true, pos,
+    false, nil, nil,
+    0, 0, 0, nil)
 end
 
 --生成砖头
@@ -337,9 +344,9 @@ function InitProtoBrick()
     local callback = function (awId)
         protos.blockBrick.id = awId
         GenBrickDebris(awId, 0, 0)
-        GenBrickDebris(awId, 0, 1)
-        GenBrickDebris(awId, 1, 0)
-        GenBrickDebris(awId, 1, 1)
+        -- GenBrickDebris(awId, 0, 1)
+        -- GenBrickDebris(awId, 1, 0)
+        -- GenBrickDebris(awId, 1, 1)
     end
     GenAirWall(callback)
 end
@@ -364,12 +371,12 @@ function SyncInit()
 end
 
 function GenBlock()
-    local rd = UMath:GetRandomInt(1,2)
+    local rd = UMath:GetRandomInt(1,1)
     if rd == 1 then
         GenBlockUnknown(false)
         GenBlockUnknown(true)
     elseif rd == 2 then
-        GenBlockBrick()
+        -- GenBlockBrick()
     end
 end
 
@@ -399,7 +406,7 @@ function GenBlockUnknown(withMotion)
         print("GenBlockUnknown done", eid)
         
         -- Element:SetPosition(eid, pos, Element.COORDINATE.World)
-        local obj = AddNewObj(0, typeObjs.blockUnknown, eid, 0, UpdateBlock, 8, DestroyBlock)
+        local obj = AddNewObj(0, typeObjs.blockUnknown, eid, 0, UpdateBlock, 15, DestroyBlock)
         obj.cid = Element:GetChildElementsFromElement(eid)[1]
         local state = BuildElementState(obj.cid)
         if withMotion then
