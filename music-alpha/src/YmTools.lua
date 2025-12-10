@@ -279,7 +279,7 @@ function PushAction(doSelf, funcName, funcArg, dstId, toAllClients)
     -- print("PushAction ", doSelf, " ", toAllClients, " ", funcName)
     local msg = {funcName = funcName, funcArg = funcArg}
     --如果是toAllClients并且是单机,那么本机一定会执行,就不需要重复了
-    if toAllClients and System:IsStandalone() then
+    if toAllClients and System:IsStandalone() and doSelf then
         DoAction(msg)
         return
     end

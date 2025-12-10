@@ -374,13 +374,56 @@ function InitProtoBrick()
         --     GenBrickDebris(awId, 0, 0)
         -- end)
         GenBrickDebris(awId, 0, 0, false)
-        -- GenBrickDebris(awId, 0, 1, false)
-        -- GenBrickDebris(awId, 1, 0, false)
+        GenBrickDebris(awId, 0, 1, false)
+        GenBrickDebris(awId, 1, 0, false)
         GenBrickDebris(awId, 1, 1, true)
     end
     GenAirWall(callback)
 end
 
+
+function CopyTest()
+    --346 353
+    local id = 353
+    CopyElementAndChildrenServerEz(id, cfgCopyProps, function ()
+        
+    end, Element:GetPosition(id) + Engine.Vector(0, 900, 0))
+
+
+    --360
+    id=360
+    CopyElementAndChildrenServerEz(id, cfgCopyProps, function ()
+        
+    end, Element:GetPosition(id) + Engine.Vector(0, 900, 0))
+
+    GenBrickTest()
+end
+
+function GenBrickTestContinue(pid)
+    local pos = posOrg + Engine.Vector(0, 0, 600)
+    --生成一个方块
+    local cubeCallback = function (eid)
+        Element:BindingToElement(eid, pid)
+        local cb = function ()
+            
+        end
+        -- Element:SpawnElement(Element.SPAWN_SOURCE.Scene, eid, cb, pos + Engine.Vector(0, 0, 500), Element:GetRotation(eid), Element:GetScale(eid), true)
+        CopyElementAndChildrenServerEz(pid, cfgCopyProps, cb, pos + Engine.Vector(0, 0, 700))
+    end
+    Element:SpawnElement(Element.SPAWN_SOURCE.Config, cfgElements.cube.id, cubeCallback, pos, Engine.Rotator(0,0,0), Engine.Vector(3, 6, 3), true)
+end
+
+function GenBrickTest()
+    --生成底座
+    local pos = posOrg + Engine.Vector(0, 0, 500)
+    local callback = function (eid)
+        GenBrickTestContinue(eid)
+    end
+    --331 airwall  356 螺旋
+    local id = 353
+    -- Element:SpawnElement(Element.SPAWN_SOURCE.Config, cfgElements.airWall.id, callback, pos, Engine.Rotator(0,0,0), Engine.Vector(2, 2, 1), true)
+    Element:SpawnElement(Element.SPAWN_SOURCE.Scene, id, callback, pos, Element:GetRotation(id) + Engine.Vector(0,0,0), Element:GetScale(id) + Engine.Vector(0,0,0), true)
+end
 
 function InitBlockProto()
     cfgElements.airWall = {id=1105000000000074, size=Engine.Vector(5,5,3)}
@@ -392,7 +435,7 @@ function InitBlockProto()
     InitProtoBlockUnknown(false)
     InitProtoBlockUnknown(true)
     PrepareBrick()
-    
+    -- CopyTest()
     
 end
 
@@ -436,6 +479,13 @@ function GenBlockBrick()
         local obj = AddNewObj(0, typeObjs.brick, eid, 0, UpdateBrick, 17, CommonDestroy)
         AddObjState(obj, "move.toMove")
         SetObjState(obj, "move.toMove", -1, -1, 90)
+        local children = Element:GetChildElementsFromElement(obj.id)
+        obj.bricks = {}
+        for index, cid in ipairs(children) do
+            if CheckCustomPropBoolHas(cid, "debris") then
+                table.insert(obj.bricks, cid)
+            end
+        end
         StartObjStateByName(obj, "move", "toMove")
     end
     -- CopyElementAndChildrenServerEz(protos.blockBrick.id, cfgCopyProps, callback, pos)
@@ -526,30 +576,84 @@ function TouchBrick(obj)
     -- local children = Element:GetChildElementsFromElement(obj.id)
     -- for index, cid in ipairs(children) do
     --     if CheckCustomPropBoolHas(cid, "debris") then
-    --         Element:UnBinding(cid)
+    --         -- Element:UnBinding(cid)
+    --         ServerLog("SyncTouchBrick SetReplicates ", cid)
+    --         -- Element:SetReplicates(cid, false)
     --     end
     -- end
-    PushActionToClients(true, "SyncTouchBrick", obj)
+    -- SyncTouchBrick({obj = obj, server = true})
+    UnbindBricks({obj = obj, server = true})
+    PushActionToClients(false, "PhyBricks", {obj = obj, server = false})
+    -- ReplicateBricks({obj = obj, server = true})
+    TimerManager:AddTimer(0.3, function ()
+        -- ReplicateBricks({obj = obj, server = true})
+    end)
+    
+    TimerManager:AddTimer(0.6, function ()
+        -- PushActionToClients(false, "SyncTouchBrick", {obj = obj, server = false})
+    end)
 end
 
-function SyncTouchBrick(obj)
-    local children = Element:GetChildElementsFromElement(obj.id)
-    for index, cid in ipairs(children) do
-        if CheckCustomPropBoolHas(cid, "debris") then
+function UnbindBricks(param)
+    local obj = param.obj
+    for index, cid in ipairs(obj.bricks) do
+        if param.server then
             Element:UnBinding(cid)
-            local state = BuildElementState(cid)
-            SetElementStatePhy(state, true, false, false)
-            SetElementStateColli(state, true)
-            -- TimerManager:AddTimer(0.2, function ()
-            --     Element:AddForce(cid, Engine.Vector(0, 0, -1950))
+            -- TimerManager:AddTimer(0.3, function ()
+            --     ServerLog("SyncTouchBrick SetReplicates ", cid)
+            --     Element:SetReplicates(cid, false)
             -- end)
-            TimerManager:AddTimer(0.3, function ()
-                Element:SetEnableCollision(cid, false)
-            end)
-            SyncElementState(state)
-            Element:AddForce(cid, Engine.Vector(0, 0, 950))
-            Element:DestroyByTime(cid, 3)
         end
+        local state = BuildElementState(cid)
+        SetElementStatePhy(state, true, false, false)
+        SyncElementState(state)
+        Element:DestroyByTime(cid, 3)
+    end
+    CommonDestroy(0, obj)
+end
+
+function ReplicateBricks(param)
+    local obj = param.obj
+    for index, cid in ipairs(obj.bricks) do
+        ServerLog("SyncTouchBrick SetReplicates ", cid)
+        Element:SetReplicates(cid, false)
+    end
+end
+
+function PhyBricks(param)
+    local obj = param.obj
+    for index, cid in ipairs(obj.bricks) do
+        local state = BuildElementState(cid)
+        SetElementStatePhy(state, true, false, false)
+        SyncElementState(state)
+    end
+    
+end
+
+function SyncTouchBrick(param)
+    local obj = param.obj
+    for index, cid in ipairs(obj.bricks) do
+        if param.server then
+            Element:UnBinding(cid)
+            TimerManager:AddTimer(0.3, function ()
+                ServerLog("SyncTouchBrick SetReplicates ", cid)
+                Element:SetReplicates(cid, false)
+            end)
+        end
+        local state = BuildElementState(cid)
+        SetElementStatePhy(state, true, false, false)
+        -- SetElementStateColli(state, true)
+        -- TimerManager:AddTimer(0.2, function ()
+        --     Element:AddForce(cid, Engine.Vector(0, 0, -1950))
+        -- end)
+        -- TimerManager:AddTimer(0.3, function ()
+        --     Element:SetEnableCollision(cid, false)
+        -- end)
+        SyncElementState(state)
+        -- if not param.server then
+        --     Element:AddForce(cid, Engine.Vector(0, 0, 950))
+        -- end
+        Element:DestroyByTime(cid, 3)
     end
     CommonDestroy(0, obj)
     
