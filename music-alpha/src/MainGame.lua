@@ -582,16 +582,19 @@ function TouchBrick(obj)
     --     end
     -- end
     -- SyncTouchBrick({obj = obj, server = true})
-    UnbindBricks({obj = obj, server = true})
-    PushActionToClients(false, "PhyBricks", {obj = obj, server = false})
-    -- ReplicateBricks({obj = obj, server = true})
-    TimerManager:AddTimer(0.3, function ()
-        -- ReplicateBricks({obj = obj, server = true})
-    end)
+
+    -- UnbindBricks({obj = obj, server = true})
+    -- PushActionToClients(false, "PhyBricks", {obj = obj, server = false})
+    -- -- ReplicateBricks({obj = obj, server = true})
+    -- TimerManager:AddTimer(0.3, function ()
+    --     -- ReplicateBricks({obj = obj, server = true})
+    -- end)
     
-    TimerManager:AddTimer(0.6, function ()
-        -- PushActionToClients(false, "SyncTouchBrick", {obj = obj, server = false})
-    end)
+    -- TimerManager:AddTimer(0.6, function ()
+    --     -- PushActionToClients(false, "SyncTouchBrick", {obj = obj, server = false})
+    -- end)
+
+    PushActionToClients(true, "SyncTouchBrick", {obj = obj, server = false})
 end
 
 function UnbindBricks(param)
@@ -633,26 +636,29 @@ end
 function SyncTouchBrick(param)
     local obj = param.obj
     for index, cid in ipairs(obj.bricks) do
-        if param.server then
-            Element:UnBinding(cid)
-            TimerManager:AddTimer(0.3, function ()
-                ServerLog("SyncTouchBrick SetReplicates ", cid)
-                Element:SetReplicates(cid, false)
-            end)
-        end
+        Element:UnBinding(cid)
+        -- if param.server then
+        --     Element:UnBinding(cid)
+        --     -- TimerManager:AddTimer(0.3, function ()
+        --     --     ServerLog("SyncTouchBrick SetReplicates ", cid)
+        --     --     Element:SetReplicates(cid, false)
+        --     -- end)
+        -- end
         local state = BuildElementState(cid)
         SetElementStatePhy(state, true, false, false)
         -- SetElementStateColli(state, true)
         -- TimerManager:AddTimer(0.2, function ()
         --     Element:AddForce(cid, Engine.Vector(0, 0, -1950))
         -- end)
-        -- TimerManager:AddTimer(0.3, function ()
-        --     Element:SetEnableCollision(cid, false)
-        -- end)
+        TimerManager:AddTimer(0.3, function ()
+            Element:SetEnableCollision(cid, false)
+            -- Element:ScaleTo(cid, Engine.Vector(0.2, 0.2, 0.2), 0.5, Element.CURVE.linear)
+        end)
         SyncElementState(state)
-        -- if not param.server then
-        --     Element:AddForce(cid, Engine.Vector(0, 0, 950))
-        -- end
+        if CanRunOnlyOnServer() then
+            ServerLog("CanRunOnlyOnServer AddForce")
+            Element:AddForce(cid, Engine.Vector(0, 0, 950))
+        end
         Element:DestroyByTime(cid, 3)
     end
     CommonDestroy(0, obj)

@@ -284,6 +284,10 @@ function PushAction(doSelf, funcName, funcArg, dstId, toAllClients)
         return
     end
 
+    if doSelf then
+        DoAction(msg)
+    end
+
     if toAllClients then
         if not System:IsStandalone() then
             System:SendToAllClients(MsgIds.commonAction, msg)
@@ -296,9 +300,6 @@ function PushAction(doSelf, funcName, funcArg, dstId, toAllClients)
         end
     end
 
-    if doSelf then
-        DoAction(msg)
-    end
 end
 
 function PushActionToClients(doSelf, funcName, funcArg)
@@ -946,4 +947,12 @@ end
 function CheckCustomPropBoolHas(eid, name)
     local v = CustomProperty:GetCustomProperty(eid, name, CustomProperty.PROPERTY_TYPE.Bool)
     return (v ~= nil)
+end
+
+function CanRunOnlyOnClient()
+    return System:IsStandalone() or System:IsClient()
+end
+
+function CanRunOnlyOnServer()
+    return System:IsStandalone() or System:IsServer()
 end
