@@ -289,9 +289,9 @@ function PushAction(doSelf, funcName, funcArg, dstId, toAllClients)
     end
 
     if toAllClients then
-        if not System:IsStandalone() then
+        -- if not System:IsStandalone() then
             System:SendToAllClients(MsgIds.commonAction, msg)
-        end
+        -- end
     else
         if dstId == nil then
             System:SendToServer(MsgIds.commonAction, msg)
