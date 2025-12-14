@@ -11,6 +11,7 @@ TaskNames = {task1s="1sTasks", taskFrame="frameTasks"}
 -- 复制元件并设置位置后,客户端通知服务器已完成,这时候需要维护这张表,新加obj时会检查这张表并标记
 local tempPosSynced = {[123]={createTs=0}}
 posFarthest = Engine.Vector(-80000, -80000, -80000)
+ObjGroups = {Element=0, MotionUnit=2}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -949,10 +950,19 @@ function CheckCustomPropBoolHas(eid, name)
     return (v ~= nil)
 end
 
+--需要只在客户端运行的用此方法判断
 function CanRunOnlyOnClient()
     return System:IsStandalone() or System:IsClient()
 end
 
+--需要只在服务器运行的用此方法判断
 function CanRunOnlyOnServer()
     return System:IsStandalone() or System:IsServer()
+end
+
+function AddMotionToElement(eid, name, motionType, motionVector, isIncrement, initialDelay, totalTime, cycleNum, duration, durationDelay, isBackAndForth)
+    local id = string.format("%s-%s", eid, name)
+    local motionObj = {id=id, eid=eid, name=name, type=motionType, vec=VectorToTable(motionVector)}
+    local obj = AddNewObj(ObjGroups.MotionUnit, 0, id, 0, )
+    return obj
 end
