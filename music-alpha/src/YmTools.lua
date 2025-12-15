@@ -963,6 +963,16 @@ end
 function AddMotionToElement(eid, name, motionType, motionVector, isIncrement, initialDelay, totalTime, cycleNum, duration, durationDelay, isBackAndForth)
     local id = string.format("%s-%s", eid, name)
     local motionObj = {id=id, eid=eid, name=name, type=motionType, vec=VectorToTable(motionVector)}
-    local obj = AddNewObj(ObjGroups.MotionUnit, 0, id, 0, )
+    local obj = AddNewObj(ObjGroups.MotionUnit, 0, id, 0, UpdateMotionUnit, totalTime, DestroyMotionUnit)
+    AddObjState(obj, "mu.move")
+    SetObjState(obj, "mu.move", GetGameTimeCur() + initialDelay, GetGameTimeCur() + totalTime, duration)
+    SetObjStateNext
     return obj
+end
+
+function UpdateMotionUnit()
+end
+
+function DestroyMotionUnit()
+    
 end
