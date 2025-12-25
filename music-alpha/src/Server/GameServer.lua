@@ -60,6 +60,7 @@ end
 function GameServer:OnUpdate()
     -- 当前游戏总时间
     self.GameTime = TimerManager:GetTimeSeconds() - self.StartTime
+    -- print("GameServer GameTime ", TimerManager:GetTimeSeconds())
     UpdateGameServer()
 
     --每10秒给客户端发送一次广播

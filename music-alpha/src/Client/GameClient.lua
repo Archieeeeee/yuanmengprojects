@@ -26,6 +26,7 @@ end
 
 -- 游戏更新
 function GameClient:OnUpdate()
+    -- print("GameClient GameTime ", TimerManager:GetTimeSeconds())
     UpdateGameClient()
 end
 

@@ -160,24 +160,26 @@ function SyncMoveBlock(msg)
     -- Element:MoveTo(msg.id, pos + Engine.Vector(-2000, 0, 0), 2, Element.CURVE.linear, nil)
 end
 
+function StartMoveBlock(obj, state)
+    local bid = obj.id
+    print("UpdateBlock toMove")
+        
+    if obj.wm then
+        
+    end
+    -- SetElementReplicatesAndChildren(bid, false)
+    local pos = VectorToTable(Element:GetPosition(bid))
+    PushActionToClients(true, "SyncMoveBlock", {pos = pos, obj=obj})
+    -- Element:EnableMotionUnitByIndex(bid, 1, true)
+    -- PushActionToClients(true, "SyncUpdateBlockPos", {eid=bid})
+    -- PushActionToClients(true, "SyncStartUpdateBlockTimer", {eid=bid})
+end
+
 function UpdateBlock(deltaTime, obj)
     local bid = obj.id
     -- if not CheckObjPosSynced(bid) then
     --     return
     -- end
-    if CanObjStateInit(obj, "move.toMove") then
-        print("UpdateBlock toMove")
-        
-        if obj.wm then
-            
-        end
-        -- SetElementReplicatesAndChildren(bid, false)
-        local pos = VectorToTable(Element:GetPosition(bid))
-        PushActionToClients(true, "SyncMoveBlock", {pos = pos, obj=obj})
-        -- Element:EnableMotionUnitByIndex(bid, 1, true)
-        -- PushActionToClients(true, "SyncUpdateBlockPos", {eid=bid})
-        -- PushActionToClients(true, "SyncStartUpdateBlockTimer", {eid=bid})
-    end
 
     -- Element:SetPosition(bid, Element:GetPosition(bid) + Engine.Vector(-500 * GetUpdateDeltaTime(), 0, 0), Element.COORDINATE.World)
 end
@@ -193,28 +195,30 @@ function SyncUpdateBlockPos(msg)
 end
 
 
+function StartMoveBoss(obj, state)
+    if state.dir == nil then
+        state.dir = false
+    end
+    state.dir = (not state.dir)
+    local diff = -300
+    if state.dir then
+        diff = (-1 * diff)
+    end
+    PushActionToClients(true, "UpdateBossSync", {action="move", obj=obj})
+    
+    Creature:SetTargetPointMove(cid, posOrg + Engine.Vector(diff, 0, 200), 1)
+end
+
+function StartAttackBoss(obj, state)
+    -- TimerManager:AddTimer(1, function ()
+    --     Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "CommonFallBackLoop", Animation.PART_NAME.FullBody)
+    -- end)
+    PushActionToClients(true, "UpdateBossSync", {action="attack", obj=obj})
+end
+
 function UpdateBoss(deltaTime, obj)
     -- print("UpdateBoss ", MiscService:Table2JsonStr(obj))
     local cid = obj.id
-    if IsObjStateCurAndInit(obj, "move", "toMove") then
-        local state = GetObjState(obj, "move.toMove")
-        if state.dir == nil then
-            state.dir = false
-        end
-        state.dir = (not state.dir)
-        local diff = -300
-        if state.dir then
-            diff = (-1 * diff)
-        end
-        PushActionToClients(true, "UpdateBossSync", {action="move", obj=obj})
-        
-        Creature:SetTargetPointMove(cid, posOrg + Engine.Vector(diff, 0, 200), 1)
-    elseif IsObjStateCurAndInit(obj, "move", "toAttack") then
-        -- TimerManager:AddTimer(1, function ()
-        --     Animation:PlayAnim(Animation.PLAYER_TYPE.Creature, cid, "CommonFallBackLoop", Animation.PART_NAME.FullBody)
-        -- end)
-        PushActionToClients(true, "UpdateBossSync", {action="attack", obj=obj})
-    end
 end
 
 function PostGenBoss(msg)
@@ -256,11 +260,13 @@ function GenBossAfterPlatform(pid)
     obj.pid = pid
 
     AddObjState(obj, "move.toMove")
-    SetObjState(obj, "move.toMove", -1, -1, 5)
+    SetObjState(obj, "move.toMove", 0, 5)
     AddObjState(obj, "move.toAttack")
-    SetObjState(obj, "move.toAttack", -1, -1, 5)
-    SetObjStateNext(obj, "move.toMove", "move", "toAttack")
-    SetObjStateNext(obj, "move.toAttack", "move", "toMove")
+    SetObjState(obj, "move.toAttack", 0, 5)
+    SetObjStateNextCycle(obj, "move.toMove", "move", "toAttack")
+    SetObjStateNextCycle(obj, "move.toAttack", "move", "toMove")
+    SetObjStateFunc(obj, "move.toMove", nil, nil, StartMoveBoss, nil, nil)
+    SetObjStateFunc(obj, "move.toAttack", nil, nil, StartAttackBoss, nil, nil)
     StartObjStateByName(obj, "move", "toMove")
 
     print("GenBoss after ", MiscService:Table2JsonStr(obj))
@@ -444,7 +450,7 @@ function SyncInit()
 end
 
 function GenBlock()
-    local rd = UMath:GetRandomInt(2,2)
+    local rd = UMath:GetRandomInt(1,2)
     if rd == 1 then
         GenBlockUnknown(false)
         GenBlockUnknown(true)
@@ -453,21 +459,23 @@ function GenBlock()
     end
 end
 
+function StartMoveBrick(obj, state)
+    local pos = VectorToTable(Element:GetPosition(obj.id))
+    PushActionToClients(true, "SyncMoveBrick", {pos = pos, obj=obj})
+    -- Element:EnableMotionUnitByIndex(bid, 1, true)
+    -- PushActionToClients(true, "SyncUpdateBlockPos", {eid=bid})
+    -- PushActionToClients(true, "SyncStartUpdateBlockTimer", {eid=bid})
+end
+
 function UpdateBrick(deltaTime, obj)
     local pos = Element:GetPosition(obj.id)
     -- Element:SetPosition(obj.id, pos + Engine.Vector(deltaTime*100, 0, 0), Element.COORDINATE.World)
     -- Element:SetPosition(obj.id, posOrg + Engine.Vector(0, 0, 800), Element.COORDINATE.World)
-    if CanObjStateInit(obj, "move.toMove") then
-        local pos = VectorToTable(Element:GetPosition(obj.id))
-        PushActionToClients(true, "SyncMoveBrick", {pos = pos, obj=obj})
-        -- Element:EnableMotionUnitByIndex(bid, 1, true)
-        -- PushActionToClients(true, "SyncUpdateBlockPos", {eid=bid})
-        -- PushActionToClients(true, "SyncStartUpdateBlockTimer", {eid=bid})
-    end
 end
 
 function SyncMoveBrick(msg)
-    Element:LinearMotion(msg.obj.id, Engine.Vector(-1, 0, 0), 500, 0, 500, 999)
+    -- Element:LinearMotion(msg.obj.id, Engine.Vector(-1, 0, 0), 500, 0, 500, 999)
+    AddMotionToElement(msg.obj.id, "mutest", 1, Engine.Vector(-500,0,0), false, 0, 999, 0, 0, 0, false)
 end
 
 
@@ -478,7 +486,8 @@ function GenBlockBrick()
     local callback = function (eid)
         local obj = AddNewObj(0, typeObjs.brick, eid, 0, UpdateBrick, 17, CommonDestroy)
         AddObjState(obj, "move.toMove")
-        SetObjState(obj, "move.toMove", -1, -1, 90)
+        SetObjState(obj, "move.toMove",  90, 0)
+        SetObjStateFunc(obj, "move.toMove", nil, nil, StartMoveBrick, nil, nil)
         local children = Element:GetChildElementsFromElement(obj.id)
         obj.bricks = {}
         for index, cid in ipairs(children) do
@@ -511,9 +520,15 @@ function GenBlockUnknown(withMotion)
             SetElementStateColor(state, 1, "#FF2222")
         end
         PushActionToClients(true, "SyncElementState", state)
-        AddObjState(obj, "move.toMove")
-        SetObjState(obj, "move.toMove", -1, -1, 90)
-        StartObjStateByName(obj, "move", "toMove")
+
+        if withMotion then
+            AddObjState(obj, "move.toMove")
+            SetObjState(obj, "move.toMove", 90, 0)
+            SetObjStateFunc(obj, "move.toMove", nil, nil, StartMoveBlock, nil, nil)
+            StartObjStateByName(obj, "move", "toMove")
+        else
+            PushActionToClients(true, "AddMotionToBlock", obj)
+        end
     end
     local pos = posOrg + Engine.Vector(0, -200, 650)
     if withMotion then
@@ -524,6 +539,10 @@ function GenBlockUnknown(withMotion)
     end
     
     -- CopyElementAndChildrenServerEz(277, cfgCopyProps, callback)
+end
+
+function AddMotionToBlock(obj)
+    AddMotionToElement(obj.id, "mutest", 1, Engine.Vector(300,0,0), false, 0, 20, 0, 3, 0, true)
 end
 
 function InitProtoBlockUnknown(withMotion)

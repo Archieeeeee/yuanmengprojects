@@ -7,6 +7,7 @@ local RunningTime = 0
 MsgIds = {commonAction=100244}
 local clientTimeState = {}
 local serverTimeState = {}
+local gameTimeState = {}
 TaskNames = {task1s="1sTasks", taskFrame="frameTasks"}
 -- 复制元件并设置位置后,客户端通知服务器已完成,这时候需要维护这张表,新加obj时会检查这张表并标记
 local tempPosSynced = {[123]={createTs=0}}
@@ -61,37 +62,46 @@ function AddObjState(obj, name)
     local parent = obj
     local child = nil
     -- lookState  childState
+    local fullname = ""
     for index, name in ipairs(ss) do
         child = parent["states"][name]
+        if index == 1 then
+            fullname = name
+        else
+            fullname = string.format("%s.%s", fullname, name)
+        end
         if child == nil then
-            child = {cur = "", startTs = 0, endTs = 0, dur=0, inited = false, nextStates = {}, states={} }
+            child = {cur = "", startTs = 0, endTs = 0, totalTime=0, cycleTime=0, nextStates = {},
+                states={}, count=0, numLimit=0, fullname=fullname, actionTs=0, nextStatesEnd={},
+                initDelay=0, cycleDelay=0, totalDelta=0, cycleDelta=0, actionDelta=0}
             parent["states"][name] = child
         end
         parent = child
     end
 
     print("after AddObjState ", MiscService:Table2JsonStr(obj))
+    return child
 end
 
--- move.toMove
-function CanObjStateInit(obj, name)
-    local state = GetObjState(obj, name)
-    if state == nil then
-        return false
-    else
-        if state.inited then
-            return false
-        else
-            state.inited = true
-            return true
-        end
-    end
-end
+-- -- move.toMove
+-- function CanObjStateInit(obj, name)
+--     local state = GetObjState(obj, name)
+--     if state == nil then
+--         return false
+--     else
+--         if state.inited then
+--             return false
+--         else
+--             state.inited = true
+--             return true
+--         end
+--     end
+-- end
 
--- move   toMove
-function IsObjStateCurAndInit(obj, name, value)
-    return IsObjStateCur(obj, name, value) and CanObjStateInit(obj, string.format("%s.%s", name, value))
-end
+-- -- move   toMove
+-- function IsObjStateCurAndInit(obj, name, value)
+--     return IsObjStateCur(obj, name, value) and CanObjStateInit(obj, string.format("%s.%s", name, value))
+-- end
 
 -- move   toMove
 function IsObjStateCur(obj, name, value)
@@ -119,37 +129,84 @@ function GetObjState(obj, name)
     return state
 end
 
-function SetObjState(obj, name, startTs, endTs, dur)
+---设置状态参数。startTs---(initDelay)[---cycleStartTs---(cycleTime)---cycleEndTs---(cycleDelay)]---endTs
+---状态开始(调用startFunc),初始等待,周期开始(调用cycleStartFunc),持续期间调用updateFunc,等待totalTime或者numLimit之后,状态结束(调用endFunc)
+---@param obj any
+---@param name string move.moveLeft
+---@param startTs any 状态开始
+---@param endTs any 状态结束标志,不需要设置
+---@param dur any 
+function SetObjState(obj, name, totalTime, cycleTime)
     local state = GetObjState(obj, name)
-    if startTs >= 0 then
-        state.startTs = startTs
+    if totalTime ~= 0 then
+        state.totalTime = totalTime
     end
-    if endTs >= 0 then
-        state.endTs = endTs
-    end
-    if dur >= 0 then
-        state.dur = dur
+    if cycleTime ~= 0 then
+        state.cycleTime = cycleTime
     end
     print("after SetObjState ", MiscService:Table2JsonStr(obj))
+    return state
 end
 
-function SetObjStateNext(obj, name, key, value)
+function SetObjStateFunc(obj, name, startFunc, endFunc, cycleStartFunc, actionFunc, updateFunc)
+    local state = GetObjState(obj, name)
+    if startFunc ~= nil then
+        state.startFunc = startFunc
+    end
+    if endFunc ~= nil then
+        state.endFunc = endFunc
+    end
+    if cycleStartFunc ~= nil then
+        state.cycleStartFunc = cycleStartFunc
+    end
+    if actionFunc ~= nil then
+        state.actionFunc = actionFunc
+    end
+    if updateFunc ~= nil then
+        state.updateFunc = updateFunc
+    end
+    return state
+end
+
+
+function SetObjStateNextCycle(obj, name, key, value)
+    SetObjStateNextByProp(obj, "nextStates", name, key, value)
+end
+
+function SetObjStateNextEnd(obj, name, key, value)
+    SetObjStateNextByProp(obj, "nextStatesEnd", name, key, value)
+end
+
+function SetObjStateNextByProp(obj, propName, name, key, value)
     print("SetObjStateNext ", name)
     local state = GetObjState(obj, name)
-    state.nextStates[key] = value
+    state[propName][key] = value
     print("SetObjStateNext after ", name, " ", MiscService:Table2JsonStr(obj))
 end
 
 function StartObjStateByName(obj, name, value)
     local state = GetObjState(obj, name)
-    StartObjStateDirect(state, value)
+    StartObjStateDirect(obj, state, value)
 end
 
-function StartObjStateDirect(state, value)
+---开始状态,但有可能是重启状态
+function StartObjStateDirect(obj, state, value)
     local childState = state.states[value]
-    childState.startTs = GetGameTimeCur()
+    if childState.startTs == 0 then
+        childState.startTs = GetGameTimeCur()
+        childState.totalDelta = 0
+        if childState.startFunc ~= nil then
+            childState.startFunc(obj, childState)
+        end
+    end
+    childState.cycleStartTs = GetGameTimeCur()
+    childState.cycleDelta = 0
+    childState.actionDelta = 0
+    childState.count = childState.count + 1
     childState.endTs = 0
-    childState.inited = false
+    if childState.cycleStartFunc ~= nil then
+        childState.cycleStartFunc(obj, childState)
+    end
     state.cur = value
 end
 
@@ -170,13 +227,37 @@ function CheckObjStates(obj, deltaTime)
     end
 end
 
+---设置状态参数。startTs---(initDelay)[---cycleStartTs---(cycleTime)---cycleEndTs---(cycleDelay)]---endTs
+---状态开始(调用startFunc),初始等待,周期开始(调用cycleStartFunc),持续期间调用updateFunc,等待totalTime或者numLimit之后,状态结束(调用endFunc)
 function CheckSingleObjState(state, deltaTime, obj)
     --检查当前状态名称对应的状态
     if (state.cur ~= nil) and (state.cur ~= "") then
-        local childState = state.states[state.cur]
-        if childState.startTs > 0 and childState.endTs == 0 then
-            if GetGameTimeCur() - childState.startTs > childState.dur then
-                UpdateObjStateNext(childState, obj)
+        local cs = state.states[state.cur]
+        cs.totalDelta = cs.totalDelta + deltaTime
+        cs.cycleDelta = cs.cycleDelta + deltaTime
+        --未开始
+        if cs.startTs == 0 then
+        --已结束
+        elseif cs.endTs ~= 0 then
+        --判断结束
+        elseif cs.totalTime ~= 0 and cs.totalDelta >= cs.totalTime then
+            ObjStateEnd(obj, cs)
+        elseif cs.numLimit ~= 0 and cs.count > cs.numLimit then
+            ObjStateEnd(obj, cs)
+        elseif cs.actionTs == 0 then
+            local delay = cs.cycleDelay
+            if cs.count == 1 then
+                delay = cs.initDelay
+            end
+            if cs.cycleDelta >= delay then
+                ObjStateAction(obj, cs)
+            end
+        elseif cs.actionTs > 0 then
+            cs.actionDelta = cs.actionDelta + deltaTime
+            if cs.cycleTime ~= 0 and cs.actionDelta >= cs.cycleTime then
+                ObjStateCycleEnd(obj, cs)
+            else
+                ObjStateActionUpdate(obj, cs, deltaTime)
             end
         end
     end
@@ -185,6 +266,31 @@ function CheckSingleObjState(state, deltaTime, obj)
         for key, childState in pairs(state.states) do
             CheckSingleObjState(childState, deltaTime, obj)
         end
+    end
+end
+
+function ObjStateEnd(obj, state)
+    state.endTs = GetGameTimeCur()
+    if state.endFunc ~= nil then
+        state.endFunc(obj, state)
+    end
+    UpdateObjStateNext(state, state.nextStatesEnd, obj)
+end
+
+function ObjStateAction(obj, state)
+    state.actionTs = GetGameTimeCur()
+    if state.actionFunc ~= nil then
+        state.actionFunc(obj, state)
+    end
+end
+
+function ObjStateCycleEnd(obj, state)
+    UpdateObjStateNext(state, state.nextStates, obj)
+end
+
+function ObjStateActionUpdate(obj, state, deltaTime)
+    if state.updateFunc ~= nil then
+        state.updateFunc(obj, state, deltaTime)
     end
 end
 
@@ -208,10 +314,8 @@ function string:split(sep, pattern)
 end
 
 -- {["attack"]="startAttack", ["lookState.childState"]="goNext"}
-function UpdateObjStateNext(stateArg, obj)
+function UpdateObjStateNext(stateArg, nextStates, obj)
     print("UpdateObjStateNext ", MiscService:Table2JsonStr(stateArg))
-    stateArg.endTs = GetGameTimeCur()
-    local nextStates = stateArg.nextStates
     if nextStates ~= nil then
         for stateName, stateValue in pairs(nextStates) do
             StartObjStateByName(obj, stateName, stateValue)
@@ -232,15 +336,21 @@ function OnUpdateTimeStateSingle(state)
     state.deltaTime = state.gameTime - lastGameTime
 end
 
---client 和 server的方法分别操作不同的数据,方便取值不同的数据
-function OnUpdateFrame(isClient)
-    local state = clientTimeState
-    if not isClient then
-        state = serverTimeState
-    end
+--每一帧都更新时间
+function OnUpdateFrameTime()
+    local state = GetTimeState()
+    -- local state = clientTimeState
+    -- if not isClient then
+    --     state = serverTimeState
+    -- end
     
     --gen delta
     OnUpdateTimeStateSingle(state)
+end
+
+--client 和 server的方法分别操作不同的数据,方便取值不同的数据
+function OnUpdateFrame()
+    local state = GetTimeState()
     --delta ready
     UpdateAllObjects(GetUpdateDeltaTime())
     CheckAllObjStates(state.deltaTime)
@@ -249,6 +359,7 @@ end
 function InitTimeState()
     clientTimeState = GetTimeStateInit()
     serverTimeState = GetTimeStateInit()
+    gameTimeState = GetTimeStateInit()
 end
 
 function GetTimeStateInit()
@@ -315,21 +426,22 @@ function PushActionToPlayer(doSelf, funcName, funcArg, playerId)
     PushAction(doSelf, funcName, funcArg, playerId, false)
 end
 
-function GetUpdateDeltaTime() 
-    if System:IsServer() or System:IsStandalone() then
-        return serverTimeState.deltaTime
-    else
-        return clientTimeState.deltaTime
-    end
+function GetTimeState()
+    -- if System:IsServer() or System:IsStandalone() then
+    --     return serverTimeState
+    -- else
+    --     return clientTimeState
+    -- end
+    return gameTimeState
+end
+
+function GetUpdateDeltaTime()
+    return GetTimeState().deltaTime
 end
 
 --返回运行的总时间长短,游戏暂停的时候这个值不会增长
 function GetGameTimeCur()
-    if System:IsServer() or System:IsStandalone() then
-        return serverTimeState.gameTime
-    else
-        return clientTimeState.gameTime
-    end
+    return GetTimeState().gameTime
 end
 
 -- 服务端日志输出，可以选择是否发送给客户端由客户端进行输出，方便联网调试
@@ -394,6 +506,7 @@ end
 
 -- 扩展AddLoopTimer,允许初始延迟参数
 function AddLoopTimerWithInit(initialDelay, delay, callback, ...)
+    delay = math.max(0.01, delay)
     TimerManager:AddTimer(initialDelay, callback, ...)
     local addDelayTimer = function (...)
         TimerManager:AddLoopTimer(delay, callback, ...)
@@ -417,7 +530,7 @@ end
 --检查所有的定时任务并执行
 ---@param groupName string 定时任务组的名称
 function RunAllTimerTasks(groupName)
-    -- print("RunAllTimerTasks start ", MiscService:Table2JsonStr(timerTaskState))
+    -- print("RunAllTimerTasks start ", groupName, " ", MiscService:Table2JsonStr(timerTaskState))
     if timerTaskState[groupName] == nil then
         return
     end
@@ -431,6 +544,7 @@ function RunAllTimerTasks(groupName)
             local ts = GetGameTimeCur()
             -- ServerLog("checking task ", ts, " ", MiscService:Table2JsonStr(task))
             if ts - task.lastRunTs > delay then
+                -- print("RunTask start ", key)
                 RunTask(task)
             end
         end
@@ -438,7 +552,6 @@ function RunAllTimerTasks(groupName)
 end
 
 function RunTask(task)
-    print("RunTask start")
     task.lastRunTs = GetGameTimeCur()
     task.count = task.count + 1
     task.func()
@@ -960,14 +1073,43 @@ function CanRunOnlyOnServer()
     return System:IsStandalone() or System:IsServer()
 end
 
-function AddMotionToElement(eid, name, motionType, motionVector, isIncrement, initialDelay, totalTime, cycleNum, duration, durationDelay, isBackAndForth)
+function AddMotionToElement(eid, name, motionType, motionVector, isIncrement, initialDelay, totalTime, cycleNum, cycleTime, durationDelay, isBackAndForth)
     local id = string.format("%s-%s", eid, name)
     local motionObj = {id=id, eid=eid, name=name, type=motionType, vec=VectorToTable(motionVector)}
     local obj = AddNewObj(ObjGroups.MotionUnit, 0, id, 0, UpdateMotionUnit, totalTime, DestroyMotionUnit)
+    obj.motionObj = motionObj
     AddObjState(obj, "mu.move")
-    SetObjState(obj, "mu.move", GetGameTimeCur() + initialDelay, GetGameTimeCur() + totalTime, duration)
-    SetObjStateNext
+    SetObjState(obj, "mu.move", totalTime, cycleTime)
+    SetObjStateFunc(obj, "mu.move", nil, nil, nil, MotionObjAction, MotionObjUpdate)
+    if isBackAndForth then
+        AddObjState(obj, "mu.moveBack")
+        SetObjState(obj, "mu.moveBack", totalTime, cycleTime)
+        SetObjStateNextCycle(obj, "mu.move", "mu", "moveBack")
+        SetObjStateNextCycle(obj, "mu.moveBack", "mu", "move")
+        SetObjStateFunc(obj, "mu.moveBack", nil, nil, nil, MotionObjAction, MotionObjUpdate)
+    end
+    
+    StartObjStateByName(obj, "mu", "move")
     return obj
+end
+
+function MotionObjUpdate(obj, state, deltaTime)
+    -- print("MotionObjUpdate start ", MiscService:Table2JsonStr(obj))
+    local motionObj = obj.motionObj
+    -- print("MotionObjUpdatemotionObj ", MiscService:Table2JsonStr(motionObj.vec), " ", deltaTime)
+    local vec = VectorFromTable(motionObj.vec)
+    -- print("deltaTime is ", deltaTime)
+    local multi = 1 * deltaTime
+    if string.find(state.fullname, "moveBack") then
+        multi = multi * -1
+    end
+    local diff = Engine.Vector(vec.X * multi, vec.Y * multi, vec.Z * multi)
+    -- print("diff is ", MiscService:Table2JsonStr(VectorToTable(diff)))
+    Element:SetPosition(motionObj.eid, Element:GetPosition(motionObj.eid) + diff, "WorldCoordinate")
+end
+
+function MotionObjAction(obj, state)
+    print("MotionObjAction start ", MiscService:Table2JsonStr(obj))
 end
 
 function UpdateMotionUnit()
