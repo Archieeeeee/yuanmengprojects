@@ -13,6 +13,7 @@ TaskNames = {task1s="1sTasks", taskFrame="frameTasks"}
 local tempPosSynced = {[123]={createTs=0}}
 posFarthest = Engine.Vector(-80000, -80000, -80000)
 ObjGroups = {Element=0, MotionUnit=2}
+CfgTools = {MotionUnit={Types={Pos=1, Scale=3, Rotate=5}}}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -470,6 +471,10 @@ function AddNewObj(groupType, type, id, updateDur, updateFunc, lifeDur, destroyF
     objectsAio[id] = obj
     CheckObjPosSynced(id)
     return obj
+end
+
+function GetObjById(id)
+    return objectsAio[id]
 end
 
 function UpdateAllObjects(deltaTime)
@@ -1016,6 +1021,10 @@ function VectorFromTable(tab)
     return Engine.Vector(tab.x, tab.y, tab.z)
 end
 
+function NewVectorTable(x, y, z)
+    return {x=x, y=y, z=z}
+end
+
 --检查失效的元件位置
 function DebugAnaObjects()
     for key, value in pairs(objectsAio) do
@@ -1073,23 +1082,41 @@ function CanRunOnlyOnServer()
     return System:IsStandalone() or System:IsServer()
 end
 
-function AddMotionToElement(eid, name, motionType, motionVector, isIncrement, initialDelay, totalTime, cycleNum, cycleTime, durationDelay, isBackAndForth)
-    local id = string.format("%s-%s", eid, name)
-    local motionObj = {id=id, eid=eid, name=name, type=motionType, vec=VectorToTable(motionVector)}
-    local obj = AddNewObj(ObjGroups.MotionUnit, 0, id, 0, UpdateMotionUnit, totalTime, DestroyMotionUnit)
-    obj.motionObj = motionObj
+
+function NewMotionParam(id, objId, objGroup, objType, motionObj, objUpdateFunc, objDestroyFunc, totalTime, cycleTime,
+    initialDelay, cycleNum, cycleDelay, actionFunc, updateFunc)
+    return {id=id, objId=objId, objGroup=objGroup, objType=objType, motionObj=motionObj, objUpdateFunc=objUpdateFunc,
+        objDestroyFunc=objDestroyFunc, totalTime=totalTime, cycleTime=cycleTime, initialDelay=initialDelay, cycleNum=cycleNum,
+        cycleDelay=cycleDelay, actionFunc=actionFunc, updateFunc=updateFunc}
+end
+
+
+function BuildMotionObj(param)
+    local totalTime = param.totalTime
+    local cycleTime = param.cycleTime
+    local obj = AddNewObj(param.objGroup, param.objType, param.objId, 0, param.objUpdateFunc, totalTime, param.objDestroyFunc)
+    obj.motionObj = param.motionObj
     AddObjState(obj, "mu.move")
     SetObjState(obj, "mu.move", totalTime, cycleTime)
-    SetObjStateFunc(obj, "mu.move", nil, nil, nil, MotionObjAction, MotionObjUpdate)
-    if isBackAndForth then
+    SetObjStateFunc(obj, "mu.move", nil, nil, nil, param.actionFunc, param.updateFunc)
+    if param.isBackAndForth then
         AddObjState(obj, "mu.moveBack")
         SetObjState(obj, "mu.moveBack", totalTime, cycleTime)
         SetObjStateNextCycle(obj, "mu.move", "mu", "moveBack")
         SetObjStateNextCycle(obj, "mu.moveBack", "mu", "move")
-        SetObjStateFunc(obj, "mu.moveBack", nil, nil, nil, MotionObjAction, MotionObjUpdate)
+        SetObjStateFunc(obj, "mu.moveBack", nil, nil, nil, param.actionFunc, param.updateFunc)
     end
     
     StartObjStateByName(obj, "mu", "move")
+    return obj
+end
+
+function AddMotionToElement(eid, name, motionType, motionVector, isIncrement, initialDelay, totalTime, cycleNum, cycleTime, cycleDelay, isBackAndForth)
+    local id = string.format("%s-%s", eid, name)
+    local motionObj = {id=id, eid=eid, name=name, type=motionType, vec=VectorToTable(motionVector)}
+    local param = NewMotionParam(id, id, ObjGroups.MotionUnit, 0, motionObj, UpdateMotionUnit, DestroyMotionUnit,
+        totalTime, cycleTime, initialDelay, cycleNum, cycleDelay, MotionObjAction, MotionObjUpdate)
+    local obj = BuildMotionObj(param)
     return obj
 end
 
@@ -1105,7 +1132,27 @@ function MotionObjUpdate(obj, state, deltaTime)
     end
     local diff = Engine.Vector(vec.X * multi, vec.Y * multi, vec.Z * multi)
     -- print("diff is ", MiscService:Table2JsonStr(VectorToTable(diff)))
-    Element:SetPosition(motionObj.eid, Element:GetPosition(motionObj.eid) + diff, "WorldCoordinate")
+    if motionObj.type == CfgTools.MotionUnit.Types.Pos then
+        Element:SetPosition(motionObj.eid, Element:GetPosition(motionObj.eid) + diff, Element.COORDINATE.World)
+    elseif motionObj.type == CfgTools.MotionUnit.Types.Scale then
+        Element:SetScale(motionObj.eid, Element:GetScale(motionObj.eid) + diff)
+    elseif motionObj.type == CfgTools.MotionUnit.Types.Rotate then
+        local rot = Element:GetRotation(motionObj.eid) + diff
+        Element:SetRotation(motionObj.eid, Engine.Vector(LimitRotateNum(rot.X), LimitRotateNum(rot.Y), LimitRotateNum(rot.Z)), Element.COORDINATE.World)
+    end
+    
+end
+
+function LimitRotateNum(num)
+    -- print("LimitRotateNum a ", num)
+    -- if num < 0 then
+    --     num = 360 + num
+    -- end
+    -- if num > 180 then
+    --     print("LimitRotateNum ", num)
+    --     num = num - 180
+    -- end
+    return num
 end
 
 function MotionObjAction(obj, state)
@@ -1117,4 +1164,21 @@ end
 
 function DestroyMotionUnit()
     
+end
+
+function RemoveMotionByEidAndName(eid, name)
+    local id = string.format("%s-%s", eid, name)
+    GetObjById(id).active = false
+end
+
+function CopyTableByJson(table)
+    return MiscService:JsonStr2Table(MiscService:Table2JsonStr(table))
+end
+
+function VectorPlus(vec, x, y, z)
+    return vec + Engine.Vector(x, y, z)
+end
+
+function VectorTablePlus(tab, x, y, z)
+    return {x = (tab.x + x), y = (tab.y + y), z = (tab.z + z)}
 end

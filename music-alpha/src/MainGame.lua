@@ -5,7 +5,7 @@ local platformId = 229
 local msgIdBlockState = 100115
 posOrg = Engine.Vector(0, 0, 0)
 
-local typeObjs = {boss = 1000, blockUnknown=101, brick=103}
+local typeObjs = {boss = 1000, blockUnknown=101, brick=103, tetrisBlock=2001}
 local cfgAirWallId = 1105000000000074
 local cfgElements = {}
 local protos = {}
@@ -14,7 +14,12 @@ local cfgDataNames = {"ymAnimes"}
 local haohaoyaId = 327
 animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
 ymAnimes = {}
-local elesInScene = {airwall=331}
+local elesInScene = {airwall=331, cube=381, brick=334}
+local tetrisBoard = {parts={}, columnHeights={}}
+cfgTetrisBlock_1_1 = {parts={{1,1,0,0}, {0,1,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=1, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_1_2 = {parts={{0,0,1,0}, {0,1,1,0}, {0,1,0,0}, {0,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, rotate={x=90, y=0, z=90}}}
+local cfgTetris = {blockSize=100, board={rowNum=20, colNum=10}}
+local tetrisPlayerData = {dropSpeed=100, dropBlocks={}, boardPosTab=nil}
 
 
 function CallbackCharCreated(playerId)
@@ -24,6 +29,7 @@ end
 
 function InitClient() 
     InitMusicClient()
+    RegisterEventsClient()
 end
 
 function InitServer() 
@@ -38,6 +44,9 @@ function InitServer()
         InitMusic()
     end
     RegisterEventsServer()
+
+    InitTetrisData()
+    InitTetrisBoard(tetrisBoard, cfgTetris.board.rowNum, cfgTetris.board.colNum)
 end
 
 function InitVarsClient()
@@ -128,10 +137,348 @@ function InitServerTimers()
     AddTimerTask(TaskNames.task1s, "genBoss", 2, 30, GenBoss)
     AddTimerTask(TaskNames.task1s, "GenBlockBall", 2, 10, GenBlockBall)
     AddTimerTask(TaskNames.task1s, "playAnime", 3, 0.9, PlayAnime)
+    AddTimerTask(TaskNames.task1s, "playAnime", 2, 1, GenTetrisDropBlock)
     -- AddTimerTask("1sTasks", "sfxTest", 3, 60, function ()
     --     PlaySfx("starmantwo")
     -- end)
 end
+
+
+function GetActiveDropBlock(playerData)
+    for key, block in pairs(playerData.dropBlocks) do
+        if block.active then
+            return block
+        end
+    end
+    return nil
+end
+
+function GenTetrisDropBlock()
+    if GetActiveDropBlock(tetrisPlayerData) == nil then
+        local block = NewTetrisBlock(1, 1)
+        InitTetrisBlockEntity(block, tetrisPlayerData)
+    end
+end
+
+function InitTetrisData()
+    tetrisPlayerData.boardPosTab = VectorToTable(VectorPlus(posOrg, 0, 0, 0))
+    --初始化方块配置
+    for type = 1, 7 do
+        for morph = 1, 4 do
+            local cfgBlock = GetTetrisBlockCfg(type, morph)
+            if cfgBlock ~= nil then
+                InitTetrisBlockCfg(cfgBlock)
+            end
+        end
+    end
+end
+
+function InitTetrisBlockCfg(cfgBlock)
+    --找出最左和最右端
+    local parts = cfgBlock.parts
+    local colStart = #parts[1]
+    local colEnd = 1
+    --遍历每一列
+    for col = 1, #parts[1] do
+        --该列是否发现有值
+        local colFound = false
+        for row = 1, #parts do
+            if colFound == false and parts[row][col] ~= 0 then
+                colFound = true
+                colStart = math.min(colStart, col)
+                colEnd = math.max(colEnd, col)
+            end
+        end
+    end
+    cfgBlock.cfg.colStart = colStart
+    cfgBlock.cfg.colEnd = colEnd
+end
+
+---初始化单个棋盘
+function InitTetrisBoard(board, rowNum, columnNum)
+    for i = 1, rowNum do
+        local row = {}
+        for j = 1, columnNum do
+            table.insert(row, 0)
+        end
+        table.insert(board.parts, row)
+    end
+    for j = 1, columnNum do
+        table.insert(board.columnHeights, 0)
+    end
+end
+
+---新建方块
+function NewTetrisBlock(type, morph)
+    local block = {active=true, dropInited=false, solidet=false}
+    SetTetrisBlockCfg(block, type, morph)
+    block.curColumn = math.floor(cfgTetris.board.colNum / 2)
+    return block
+end
+
+function GetTetrisBlockCfg(type, morph)
+    local varName = string.format("cfgTetrisBlock_%s_%s", type, morph)
+    -- print("SetTetrisBlockCfg varName ", varName)
+    local cfgBlock = _G[varName]
+    return cfgBlock
+end
+
+function SetTetrisBlockCfg(block, type, morph)
+    local cfgBlock = GetTetrisBlockCfg(type, morph)
+    block.blockParts = CopyTableByJson(cfgBlock.parts)
+    block.blockCfg = cfgBlock.cfg
+    -- print("SetTetrisBlockCfg block ", MiscService:Table2JsonStr(block))
+end
+
+function GetTetrisBlockPosX(block, boardPosTab)
+    return boardPosTab.x + block.curColumn * cfgTetris.blockSize
+end
+
+---方块实体化
+function InitTetrisBlockEntity(block, playerData)
+    local posSrc = VectorFromTable(playerData.boardPosTab)
+    local dropHigh = (#tetrisBoard.parts + 2) * cfgTetris.blockSize
+    posSrc = VectorPlus(posSrc, 0, 0, dropHigh)
+    posSrc.X = GetTetrisBlockPosX(block, playerData.boardPosTab)
+    block.posTab = VectorToTable(posSrc)
+    -- local posSrc = posOrg + Engine.Vector(-300, 0, 1300)
+    --原点创建父节点
+    local awCallback = function (awId)
+        block.awId = awId
+        playerData.dropBlocks[awId] = block
+        local obj = AddNewObj(0, typeObjs.tetrisBlock, awId, 0.01, UpdateTetrisDropBlock, 9999, CommonDestroy)
+        local partIdx = 0
+        --棋盘行高加2
+        for rowIdx, row in ipairs(block.blockParts) do
+            for colIdx, val in ipairs(row) do
+                if val ~= 0 then
+                    --从中心点开始
+                    partIdx = partIdx + 1
+                    local bpos = VectorPlus(posSrc, colIdx * cfgTetris.blockSize, 0, rowIdx * cfgTetris.blockSize)
+                    AddPartEntityToTetrisBlock(block, partIdx, awId, bpos)
+                end
+            end
+        end
+    end
+    CopyElementAndChildrenServerEzScale(elesInScene.airwall, cfgCopyProps, awCallback, posSrc, cfgElements.airWall.size, 100, 100, 100, nil)
+end
+
+---给方块创建四个部件
+function AddPartEntityToTetrisBlock(block, partIdx, awId, bpos)
+    local callback = function (eid)
+        Element:BindingToElement(eid, awId)
+        if partIdx == 4 then
+            PushActionToClients(true, "SyncMoveTetrisDropBlock", block)
+        end
+    end
+    CopyElementAndChildrenServerEz(elesInScene.cube, cfgCopyProps, callback, bpos)
+end
+
+---开始下落
+function SyncMoveTetrisDropBlock(block)
+    -- AddMotionToElement(block.awId, "drop", CfgTools.MotionUnit.Types.Pos, Engine.Vector(0,0, -1 * tetrisPlayerData.dropSpeed), false, 0, 999, 0, 0, 0, false)
+    local id = string.format("%s-%s", block.awId, "drop")
+    local motionObj = {block=block}
+    local param = NewMotionParam(id, id, ObjGroups.MotionUnit, 0, motionObj, UpdateMotionUnit, DestroyMotionUnit,
+        999, 0, 0, 0, 0, nil, TetrisBlockDropMotionUpdate)
+    local obj = BuildMotionObj(param)
+end
+
+function TetrisBlockDropMotionUpdate(obj, state, deltaTime)
+    local block = obj.motionObj.block
+    if block.solidet then
+        return
+    end
+    -- print("TetrisBlockDropMotionUpdate block ", MiscService:Table2JsonStr(block))
+    local x = GetTetrisBlockPosX(block, tetrisPlayerData.boardPosTab)
+    local z = (block.posTab.z - tetrisPlayerData.dropSpeed * deltaTime)
+    block.posTab =  NewVectorTable(x, block.posTab.y, z)
+    SyncTetrisBlockEntityStateWithData(block)
+end
+
+--把方块数据同步到外观
+function SyncTetrisBlockEntityStateWithData(block)
+    Element:SetPosition(block.awId, VectorFromTable(block.posTab), Element.COORDINATE.World)
+    Element:SetRotation(block.awId, VectorFromTable(block.blockCfg.rotate), Element.COORDINATE.World)
+end
+
+function UpdateTetrisDropBlock(deltaTime, obj)
+    local block = tetrisPlayerData.dropBlocks[obj.id]
+    if block == nil then
+        return
+    end
+    CheckTetrisBlockState(block, obj)
+end
+
+---todo
+function CheckTetrisBlockState(block, obj)
+    -- print("CheckTetrisBlockState block ", MiscService:Table2JsonStr(block))
+    block.curRow = (block.posTab.z - tetrisPlayerData.boardPosTab.z) / cfgTetris.blockSize
+    UI:SetText({102139}, MiscService:Table2JsonStr({block.curRow}))
+    if block.curRow < -8 then
+        block.active = false
+        ServerLog("CheckTetrisBlockState CommonDestroy ", obj.id)
+        CommonDestroy(0, obj)
+        return
+    end
+    CheckTetrisBlockMerge(tetrisBoard, block, obj, false)
+end
+
+---是否重叠,不重叠返回true
+function CheckTetrisBlockMerge(board, block, obj, isTest)
+    --根据当前列判断能下落的最低行
+    -- print("CheckTetrisBlockMerge ", MiscService:Table2JsonStr(block))
+    -- print("CheckTetrisBlockMerge board ", MiscService:Table2JsonStr(board))
+    local blockColumn = block.curColumn
+    local blockRowCur = math.floor(block.curRow)
+    --检查是否开始下落了,因为刚生成时位置可能在棋盘底部
+    if blockRowCur > #board.parts then
+        block.dropInited = true
+    end
+    if block.dropInited == false then
+        return false
+    end
+    --用于检查的行数,当接近下一行时允许提前计算下落到下一行的状态
+    local blockRow = blockRowCur
+    if block.curRow - blockRowCur < (1.0 / 29) then
+        blockRow = (blockRowCur - 1)
+    end
+    local blockParts = block.blockParts
+    local colNum = #blockParts[1]
+    local rowNum = #blockParts
+    -- print("CheckTetrisBlockMerge blockRowCur ", blockRowCur)
+    --是否会重叠
+    local isOverlap = false
+    if blockRow < 1 then
+        isOverlap = true
+    end
+    for col = 1, colNum do
+        for row = 1, rowNum do
+            if isOverlap == false then
+                local boardRow = board.parts[row + blockRow]
+                if boardRow ~= nil then
+                    local boardVal = boardRow[col + blockColumn]
+                    if boardVal ~= nil and boardVal ~=0 and blockParts[row][col] ~= 0 then
+                        isOverlap = true
+                    end
+                end
+            end
+        end
+    end
+    -- for i = 1,colNum do
+    --     --如果判断出某一列有重叠就不用继续判断了
+    --     if isOverlap == false then
+    --         --找出方块每一列的最低行
+    --         local minRowBlock = 0
+    --         for j = 1, rowNum do
+    --             local val = blockParts[j][i]
+    --             --第一个有方块的行就是最低行
+    --             if minRowBlock == 0 and val ~= 0 then
+    --                 ServerLog("minRowBlock col= row= ", i, j)
+    --                 minRowBlock = j
+    --             end
+    --         end
+    --         --仅判断有方块的列
+    --         if minRowBlock ~= 0 then
+    --             minRowBlock = blockRow + minRowBlock
+    --             print("minRowBlockCheck cr= minRowBlock= col= high=", blockRow, minRowBlock, i, board.columnHeights[blockColumn + i])
+    --             --判断棋盘上同一列有方块的最低行
+    --             if board.columnHeights[blockColumn + i] >= minRowBlock then
+    --                 print("isOverlap true ", i)
+    --                 isOverlap = true
+    --             end
+    --         end
+    --     end
+    -- end
+    if isTest then
+        return (not isOverlap)
+    end
+    if isOverlap == false then
+        return true
+    end
+    local mergeRow = (blockRow + 1)
+    tetrisPlayerData.dropBlocks[obj.id] = nil
+    RemoveMotionByEidAndName(obj.id, "drop")
+    SolidifyTetrisBlock(block, mergeRow, blockColumn)
+    --如果重叠进行合并, 合并到上一行的位置
+    print("isOverlap mergeRow ", mergeRow, " ", blockColumn)
+    for i = 1, rowNum do
+        for j = 1, colNum do
+            if blockParts[i][j] ~= 0 then
+                local boardRow = mergeRow + i
+                if boardRow > #board.parts then
+                    print("mergeRow too high, probably to fail")
+                    return false
+                end
+                board.parts[boardRow][j + blockColumn] = 1
+            end
+        end
+    end
+    --重新计算棋盘每一列的最高行
+    for col = 1, #board.parts[1] do
+        local found = false
+        for row = #board.parts, 1, -1 do
+            if found == false and board.parts[row][col] ~= 0 then
+                found = true
+                board.columnHeights[col] = row
+            end
+        end
+    end
+end
+
+--固化方块
+function SolidifyTetrisBlock(block, row, column)
+    block.solidet = true
+    block.curRow = row
+    block.curColumn = column
+    local posTabSrc = tetrisPlayerData.boardPosTab
+    block.posTab = NewVectorTable(GetTetrisBlockPosX(block, posTabSrc), posTabSrc.y, posTabSrc.z + block.curRow * cfgTetris.blockSize)
+    SyncTetrisBlockEntityStateWithData(block)
+end
+
+--设置curColumn,保证不会方块不会超出棋盘
+function GetTetrisBlockColumnNotOverBoard(block, diffDesire)
+    --找出最左和最右的可用值
+    local minCol = (1 - block.blockCfg.colStart + 1)
+    local maxCol = (#tetrisBoard.parts[1] - block.blockCfg.colEnd + 1)
+    local col = block.curColumn + diffDesire
+    if col > maxCol then
+        col = maxCol
+    end
+    if col < minCol then
+        col = minCol
+    end
+    block.curColumn = col
+    return col
+end
+
+function ControlActionTetrisDropBlock(isRotate, isMoveLeft)
+    local block = GetActiveDropBlock(tetrisPlayerData)
+    if block == nil then
+        return
+    end
+    local testBlock = CopyTableByJson(block)
+    if isRotate then
+        SetTetrisBlockCfg(testBlock, testBlock.blockCfg.type, testBlock.blockCfg.nextMorph)
+    end
+    local colDiff = 0
+    if isRotate == false then
+        if isMoveLeft then
+            colDiff = -1
+        else
+            colDiff = 1
+        end
+    end
+    GetTetrisBlockColumnNotOverBoard(testBlock, colDiff)
+    -- print("ControlActionTetrisDropBlock ", MiscService:Table2JsonStr(testBlock))
+    local notOverlap = CheckTetrisBlockMerge(tetrisBoard, testBlock, nil, true)
+    if notOverlap == true then
+        block.blockParts = testBlock.blockParts
+        block.blockCfg = testBlock.blockCfg
+        block.curColumn = testBlock.curColumn
+    end
+end
+
 
 function UpdateBossSync(msg)
     local cid = msg.obj.id
@@ -475,7 +822,9 @@ end
 
 function SyncMoveBrick(msg)
     -- Element:LinearMotion(msg.obj.id, Engine.Vector(-1, 0, 0), 500, 0, 500, 999)
-    AddMotionToElement(msg.obj.id, "mutest", 1, Engine.Vector(-500,0,0), false, 0, 999, 0, 0, 0, false)
+    -- AddMotionToElement(msg.obj.id, "move", CfgTools.MotionUnit.Types.Pos, Engine.Vector(-500,0,0), false, 0, 999, 0, 0, 0, false)
+    -- AddMotionToElement(msg.obj.id, "scale", CfgTools.MotionUnit.Types.Scale, Engine.Vector(1,1,1), false, 0, 5, 0, 0.2, 0, true)
+    AddMotionToElement(msg.obj.id, "rotate", CfgTools.MotionUnit.Types.Rotate, Engine.Vector(30,0,30), false, 0, 999, 0, 0, 0, true)
 end
 
 
@@ -542,7 +891,7 @@ function GenBlockUnknown(withMotion)
 end
 
 function AddMotionToBlock(obj)
-    AddMotionToElement(obj.id, "mutest", 1, Engine.Vector(300,0,0), false, 0, 20, 0, 3, 0, true)
+    AddMotionToElement(obj.id, "mutest", CfgTools.MotionUnit.Types.Pos, Engine.Vector(300,0,0), false, 0, 20, 0, 3, 0, true)
 end
 
 function InitProtoBlockUnknown(withMotion)
@@ -698,4 +1047,19 @@ end
 function RegisterEventsServer() 
     System:RegisterEvent(Events.ON_CHARACTER_CREATED, CallbackCharCreated)
     System:RegisterEvent(Events.ON_ELEMENT_TOUCH_PLAYER, CallbackPlayerTouchEle)
+end
+
+function RegisterEventsClient()
+    System:RegisterEvent(Events.ON_BUTTON_PRESSED, ButtonPressed)
+end
+
+function ButtonPressed(item)
+    print("ButtonPressed ", item)
+    if item == 102778 then
+        ControlActionTetrisDropBlock(true, false)
+    elseif item == 103375 then
+        ControlActionTetrisDropBlock(false, false)
+    elseif item == 103376 then
+        ControlActionTetrisDropBlock(false, true)
+    end
 end
