@@ -645,7 +645,7 @@ function SetCopyEleParamScale(param, orgSize, x, y, z, scaleNum)
     if orgSize ~= nil then
         param.dstScale = {orgSize=orgSize, x=x, y=y, z=z}
     end
-    if scaleNum ~= nil then
+    if scaleNum ~= nil and scaleNum ~= 0 then
         param.dstScale = {scaleNum = scaleNum}
     end
 end

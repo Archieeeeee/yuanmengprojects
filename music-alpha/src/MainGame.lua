@@ -16,8 +16,8 @@ animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
 ymAnimes = {}
 local elesInScene = {airwall=331, cube=381, brick=334}
 local tetrisBoard = {parts={}, columnHeights={}}
-cfgTetrisBlock_1_1 = {parts={{1,1,0,0}, {0,1,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=1, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
-cfgTetrisBlock_1_2 = {parts={{0,0,1,0}, {0,1,1,0}, {0,1,0,0}, {0,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, rotate={x=90, y=0, z=90}}}
+cfgTetrisBlock_1_1 = {parts={{1,1,0,0}, {0,1,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=1, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
+-- cfgTetrisBlock_1_2 = {parts={{0,0,0,0}, {0,1,0,0}, {1,1,0,0}, {1,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, entityDiffRow=1, entityDiffCol=0, rotate={x=90, y=0, z=90}}}
 local cfgTetris = {blockSize=100, board={rowNum=20, colNum=10}}
 local tetrisPlayerData = {dropSpeed=100, dropBlocks={}, boardPosTab=nil}
 
@@ -162,18 +162,88 @@ end
 
 function InitTetrisData()
     tetrisPlayerData.boardPosTab = VectorToTable(VectorPlus(posOrg, 0, 0, 0))
+    --生成配置变量
+    GenTetrisBlockCfgByRotateMulti(cfgTetrisBlock_1_1, 3)
     --初始化方块配置
     for type = 1, 7 do
         for morph = 1, 4 do
             local cfgBlock = GetTetrisBlockCfg(type, morph)
             if cfgBlock ~= nil then
-                InitTetrisBlockCfg(cfgBlock)
+                InitTetrisBlockCfgEntityDiff(cfgBlock)
+                InitTetrisBlockCfgCol(cfgBlock)
             end
         end
     end
 end
 
-function InitTetrisBlockCfg(cfgBlock)
+function GenTetrisBlockCfgByRotateMulti(blockCfg, num)
+    for i = 1, num, 1 do
+        blockCfg = GenTetrisBlockCfgByRotate(blockCfg)
+    end
+end
+
+--以方块的中心顺时针旋转90度
+function GenTetrisBlockCfgByRotate(blockCfg)
+    local parts = blockCfg.parts
+    local copyCfg = CopyTableByJson(blockCfg)
+    local rowNum = #parts
+    local colNum = #parts[1]
+    for row = 1, rowNum do
+        for col = 1, colNum do
+            copyCfg.parts[colNum - col + 1][row] = parts[row][col]
+        end
+    end
+    copyCfg.cfg.nextMorph = blockCfg.cfg.nextMorph + 1
+    if copyCfg.cfg.nextMorph > 4 then
+        copyCfg.cfg.nextMorph = 1
+    end
+    copyCfg.cfg.morph = blockCfg.cfg.nextMorph
+    copyCfg.cfg.rotate.x = copyCfg.cfg.rotate.x - 90
+    if copyCfg.cfg.rotate.x == (-270) then
+        copyCfg.cfg.rotate.x = 90
+    end
+    local varName = GetTetrisBlockCfgVarName(copyCfg.cfg.type, copyCfg.cfg.morph)
+    _G[varName] = copyCfg
+    print("GenTetrisBlockCfgByRotate ", MiscService:Table2JsonStr(copyCfg))
+    return copyCfg
+end
+
+--去除底部空白行和左边空白列,并记录位移数据
+function InitTetrisBlockCfgEntityDiff(cfgBlock)
+    if cfgBlock.cfg.morph == 1 then
+        return
+    end
+    local rowNum = #cfgBlock.parts
+    local colNum = #cfgBlock.parts[1]
+    local minRow = rowNum
+    local minCol = colNum
+    for row = 1, rowNum do
+        for col = 1, colNum do
+            if cfgBlock.parts[row][col] ~= 0 then
+                minRow = math.min(row, minRow)
+                minCol = math.min(col, minCol)
+            end
+        end
+    end
+    minRow = (minRow - 1)
+    minCol = (minCol - 1)
+    cfgBlock.cfg.entityDiffRow = minRow
+    cfgBlock.cfg.entityDiffCol = minCol
+    --重新赋值
+    local copyBlock = CopyTableByJson(cfgBlock)
+    for row = 1, rowNum do
+        for col = 1, colNum do
+            if row + minRow <= rowNum and col + minCol <= colNum then
+                cfgBlock.parts[row][col] = copyBlock.parts[row + minRow][col + minCol]
+            else
+                cfgBlock.parts[row][col] = 0
+            end
+        end
+    end
+    print("InitTetrisBlockCfgEntityDiff ", MiscService:Table2JsonStr(cfgBlock))
+end
+
+function InitTetrisBlockCfgCol(cfgBlock)
     --找出最左和最右端
     local parts = cfgBlock.parts
     local colStart = #parts[1]
@@ -216,9 +286,14 @@ function NewTetrisBlock(type, morph)
     return block
 end
 
-function GetTetrisBlockCfg(type, morph)
+function GetTetrisBlockCfgVarName(type, morph)
     local varName = string.format("cfgTetrisBlock_%s_%s", type, morph)
     -- print("SetTetrisBlockCfg varName ", varName)
+    return varName
+end
+
+function GetTetrisBlockCfg(type, morph)
+    local varName = GetTetrisBlockCfgVarName(type, morph)
     local cfgBlock = _G[varName]
     return cfgBlock
 end
@@ -241,6 +316,7 @@ function InitTetrisBlockEntity(block, playerData)
     posSrc = VectorPlus(posSrc, 0, 0, dropHigh)
     posSrc.X = GetTetrisBlockPosX(block, playerData.boardPosTab)
     block.posTab = VectorToTable(posSrc)
+    local blockCenterPosTab = GetTetrisBlockCenterPosTab(block)
     -- local posSrc = posOrg + Engine.Vector(-300, 0, 1300)
     --原点创建父节点
     local awCallback = function (awId)
@@ -254,13 +330,13 @@ function InitTetrisBlockEntity(block, playerData)
                 if val ~= 0 then
                     --从中心点开始
                     partIdx = partIdx + 1
-                    local bpos = VectorPlus(posSrc, colIdx * cfgTetris.blockSize, 0, rowIdx * cfgTetris.blockSize)
-                    AddPartEntityToTetrisBlock(block, partIdx, awId, bpos)
+                    local bpos = VectorTablePlus(block.posTab, (colIdx - 0.5)* cfgTetris.blockSize, 0, (rowIdx - 1) * cfgTetris.blockSize)
+                    AddPartEntityToTetrisBlock(block, partIdx, awId, VectorFromTable(bpos))
                 end
             end
         end
     end
-    CopyElementAndChildrenServerEzScale(elesInScene.airwall, cfgCopyProps, awCallback, posSrc, cfgElements.airWall.size, 100, 100, 100, nil)
+    CopyElementAndChildrenServerEzScale(elesInScene.airwall, cfgCopyProps, awCallback, VectorFromTable(blockCenterPosTab), cfgElements.airWall.size, 100, 100, 100, nil)
 end
 
 ---给方块创建四个部件
@@ -271,7 +347,8 @@ function AddPartEntityToTetrisBlock(block, partIdx, awId, bpos)
             PushActionToClients(true, "SyncMoveTetrisDropBlock", block)
         end
     end
-    CopyElementAndChildrenServerEz(elesInScene.cube, cfgCopyProps, callback, bpos)
+    CopyElementAndChildrenServerEzScale(elesInScene.cube, cfgCopyProps, callback, bpos, cfgElements.cube.size,
+        cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize, nil)
 end
 
 ---开始下落
@@ -292,14 +369,51 @@ function TetrisBlockDropMotionUpdate(obj, state, deltaTime)
     -- print("TetrisBlockDropMotionUpdate block ", MiscService:Table2JsonStr(block))
     local x = GetTetrisBlockPosX(block, tetrisPlayerData.boardPosTab)
     local z = (block.posTab.z - tetrisPlayerData.dropSpeed * deltaTime)
-    block.posTab =  NewVectorTable(x, block.posTab.y, z)
+    --todo 999
+    if true or state.totalDelta < 18 then
+        block.posTab =  NewVectorTable(x, block.posTab.y, z)
+    end
     SyncTetrisBlockEntityStateWithData(block)
+end
+
+function GetTetrisBlockCenterPosTab(block)
+    local rowNum = #block.blockParts
+    local colNum = #block.blockParts[1]
+    return VectorTablePlus(block.posTab, colNum/2 * cfgTetris.blockSize, 0, rowNum/2 * cfgTetris.blockSize)
+end
+
+function GetTetrisBlockEntityPosTab(block)
+    local blockCenterPosTab = GetTetrisBlockCenterPosTab(block)
+    return VectorTablePlus(blockCenterPosTab, -1 * block.blockCfg.entityDiffCol * cfgTetris.blockSize, 0, -1 * block.blockCfg.entityDiffRow * cfgTetris.blockSize)
+    -- return blockCenterPosTab
 end
 
 --把方块数据同步到外观
 function SyncTetrisBlockEntityStateWithData(block)
-    Element:SetPosition(block.awId, VectorFromTable(block.posTab), Element.COORDINATE.World)
+    Element:SetPosition(block.awId, VectorFromTable(GetTetrisBlockEntityPosTab(block)), Element.COORDINATE.World)
     Element:SetRotation(block.awId, VectorFromTable(block.blockCfg.rotate), Element.COORDINATE.World)
+end
+
+function TestRotateBlock()
+    local block = GetActiveDropBlock(tetrisPlayerData)
+    if block == nil then
+        return
+    end
+    if block.testId ~= nil then
+        block.testRot = block.testRot + 90
+        if block.testRot == 360 then
+            block.testRot = 0
+        end
+        print("TestRotateBlock ", block.testRotrot)
+        Element:SetRotation(block.testId, Engine.Vector(block.testRot, block.blockCfg.rotate.y, block.blockCfg.rotate.z), "WorldCoordinate")
+        return
+    end
+    local callback = function (eid)
+        block.testId = eid
+        block.testRot = block.blockCfg.rotate.x
+    end
+    CopyElementAndChildrenServerEz(block.awId, cfgCopyProps, callback, 
+    Element:GetPosition(block.awId) + Engine.Vector(cfgTetris.blockSize * 4, 0, 0))
 end
 
 function UpdateTetrisDropBlock(deltaTime, obj)
@@ -1061,5 +1175,7 @@ function ButtonPressed(item)
         ControlActionTetrisDropBlock(false, false)
     elseif item == 103376 then
         ControlActionTetrisDropBlock(false, true)
+    elseif item == 104477 then
+        TestRotateBlock()      
     end
 end
