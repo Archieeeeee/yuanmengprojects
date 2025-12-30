@@ -25,13 +25,15 @@ function GameServer:Init()
 
     -- 断线重连时，同步当前游戏状态给客户端
     System:RegisterEvent(Events.ON_PLAYER_RECONNECTED, self.OnReconnected, self)
+
+    InitGameServer()
 end
 
 -- 游戏启动时
 function GameServer:OnStart()
     ServerLog("[GameServer:OnStart]")
 
-    InitGameServer()
+    StartGameServer()
 
     local eventId = System:RegisterEvent(Events.ON_PLAYER_TOUCH_ELEMENT, OnCharacterTouchUnit)
     print("register eid ", eventId)

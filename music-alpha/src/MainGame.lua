@@ -18,8 +18,10 @@ local elesInScene = {airwall=331, cube=381, brick=334}
 local tetrisBoard = {parts={}, columnHeights={}}
 cfgTetrisBlock_1_1 = {parts={{1,1,0,0}, {0,1,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=1, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
 -- cfgTetrisBlock_1_2 = {parts={{0,0,0,0}, {0,1,0,0}, {1,1,0,0}, {1,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, entityDiffRow=1, entityDiffCol=0, rotate={x=90, y=0, z=90}}}
-local cfgTetris = {blockSize=100, board={rowNum=20, colNum=10}}
+local cfgTetris = {blockSize=100, board={rowNum=20, colNum=10}, matchIdStart=0}
 local tetrisPlayerData = {dropSpeed=100, dropBlocks={}, boardPosTab=nil}
+local players = {}
+local tetrisMatchs = {}
 
 
 function CallbackCharCreated(playerId)
@@ -27,12 +29,19 @@ function CallbackCharCreated(playerId)
     Character:SetPosition(playerId, pos + Engine.Vector(0, 0, 500))
 end
 
-function InitClient() 
-    InitMusicClient()
+function ClientInit()
     RegisterEventsClient()
 end
 
-function InitServer() 
+function ServerInit()
+    RegisterEventsServer()
+end
+
+function InitClientOnStart()
+    InitMusicClient()
+end
+
+function InitServerOnStart() 
     -- RegisterEventsServer()
     -- TimerManager:AddTimer(UMath:GetRandomInt(1,10), PlaySfx, "levelcomplete")
     InitBlockProto()
@@ -43,33 +52,31 @@ function InitServer()
     if not System:IsStandalone() then
         InitMusic()
     end
-    RegisterEventsServer()
 
     InitTetrisData()
-    InitTetrisBoard(tetrisBoard, cfgTetris.board.rowNum, cfgTetris.board.colNum)
-end
-
-function InitVarsClient()
     
 end
 
-function InitVarsServer()
+function InitVarsClientOnStart()
     
 end
 
-function PostInitClient()
+function InitVarsServerOnStart()
     
 end
 
-function PostInitServer()
+function PostInitClientOnStart()
     
 end
 
-function OnClientInited()
+function PostInitServerOnStart()
+end
+
+function OnClientStarted()
     Creature:SetScale(haohaoyaId, 3)
 end
 
-function InitVars()
+function InitVarsOnStart()
     posOrg = Element:GetPosition(platformId)
     LoadGlobalVarsFromData(cfgDataNames)
     print("animeData sss ", MiscService:Table2JsonStr(ymAnimes))
@@ -591,6 +598,87 @@ function ControlActionTetrisDropBlock(isRotate, isMoveLeft)
         block.blockCfg = testBlock.blockCfg
         block.curColumn = testBlock.curColumn
     end
+end
+
+--开始一场对局
+function StartTetrisMatch(playerIds)
+    local id = GetIdFromPool("tetrisMatchId", cfgTetris.matchIdStart, 1, 10)
+    local match = {id=id, players={}}
+    tetrisMatchs[id] = match
+    for index, pid in ipairs(playerIds) do
+        match.players[pid] = {id=pid}
+    end
+    --数据端生成棋盘
+    print("StartTetrisMatch done ", id)
+    local action = NewTetrisAction(match, nil, nil, "GenTetrisBoardData")
+    SendTetrisActionToDataSide(action)
+end
+
+function GenTetrisBoardData(action)
+    local board = {parts={}, columnHeights={}}
+    InitTetrisBoard(tetrisBoard, cfgTetris.board.rowNum, cfgTetris.board.colNum)
+    action.match.board = board
+end
+
+function NewTetrisAction(match, board, block, funcName)
+    local action = {match=match, board=board, block=block, funcName=funcName}
+    return action
+end
+
+
+function IsTetrisMatchSinglePlayer(match)
+    return GetTablePairLen(match.players) == 1
+end
+
+
+function SendTetrisActionToPlayers(action, players)
+    for key, player in pairs(players) do
+        SendTetrisActionToSinglePlayer(action, player.id)
+    end
+end
+
+function SendTetrisActionToSinglePlayer(action, playerId)
+    PushActionToPlayer(false, "TetrisAction", {action=action}, playerId)
+end
+
+function TetrisAction(actionObj)
+    local action = actionObj.action
+    print("TetrisAction ", action.funcName)
+    _G[action.funcName](action)
+end
+
+function SendTetrisActionToAll(match, action)
+    PushActionToClients()
+end
+
+--发往数据端
+function SendTetrisActionToDataSide(action)
+    if IsTetrisMatchDataOnLocal(action.match) then
+        TetrisAction({action=action})
+        return
+    end
+    local dataPlayerId = GetTetrisMatchDataSidePlayerId(action.match)
+    SendTetrisActionToSinglePlayer(dataPlayerId)
+end
+
+
+--获取数据端的玩家id。 -1表示服务端
+function GetTetrisMatchDataSidePlayerId(match)
+    if System:IsStandalone() then
+        return -1
+    end
+    --单人模式
+    if IsTetrisMatchSinglePlayer(match) then
+        for key, player in pairs(match.players) do
+            return player.id
+        end
+    end
+    return -1
+end
+
+--判断数据是否在本机
+function IsTetrisMatchDataOnLocal(match)
+    return GetLocalPlayerId() == GetTetrisMatchDataSidePlayerId(match)
 end
 
 
@@ -1165,6 +1253,22 @@ end
 
 function RegisterEventsClient()
     System:RegisterEvent(Events.ON_BUTTON_PRESSED, ButtonPressed)
+    System:RegisterEvent(Events.ON_PLAYER_ENTER, OnPlayerEnter)
+    System:RegisterEvent(Events.ON_PLAYER_LEAVE, OnPlayerLeave)
+    System:RegisterEvent(Events.ON_PLAYER_JOIN_MIDWAY, OnPlayerJoinMidway)
+end
+
+function OnPlayerEnter(playerId)
+    players[playerId] = {id=playerId}
+    TimerManager:AddTimer(3, StartTetrisMatch, {playerId})
+end
+
+function OnPlayerLeave(playerId)
+    players[playerId] = nil
+end
+
+function OnPlayerJoinMidway(playerId, levelId)
+    players[playerId] = {id=playerId}
 end
 
 function ButtonPressed(item)

@@ -14,6 +14,7 @@ local tempPosSynced = {[123]={createTs=0}}
 posFarthest = Engine.Vector(-80000, -80000, -80000)
 ObjGroups = {Element=0, MotionUnit=2}
 CfgTools = {MotionUnit={Types={Pos=1, Scale=3, Rotate=5}}}
+local toolIdPools = {}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -1181,4 +1182,54 @@ end
 
 function VectorTablePlus(tab, x, y, z)
     return {x = (tab.x + x), y = (tab.y + y), z = (tab.z + z)}
+end
+
+--从id池中拿取
+function GetIdFromPool(poolName, startNum, incNum, poolSize)
+    local pool = toolIdPools[poolName]
+    if pool == nil then
+        pool = {cur=startNum, size=poolSize, avaIds={}}
+        toolIdPools[poolName] = pool
+        pool.cur = pool.cur + 1
+        pool.avaIds[pool.cur] = {id = pool.cur, used=false}
+    end
+    local c = GetTablePairLen(pool.avaIds)
+    if c < poolSize then
+        for i = 0, (poolSize - c) do
+            pool.cur = pool.cur + 1
+            pool.avaIds[pool.cur] = {id = pool.cur, used=false}
+        end
+    end
+    
+    --获取可用
+    local idRes = nil
+    -- local trashIds = {}
+    for index, value in pairs(pool.avaIds) do
+        if idRes == nil and value ~= nil then
+            if value.used == false then
+                value.used = true
+                pool.avaIds[index] = nil
+                idRes = value.id
+            else
+                -- table.insert(trashIds, index)
+            end
+        end
+    end
+    -- print("GetIdFromPool after count ", pool.cur)
+    return idRes
+end
+
+function GetTablePairLen(tab)
+    local c = 0
+    for index, value in pairs(tab) do
+        c = c + 1
+    end
+    return c
+end
+
+function GetLocalPlayerId()
+    if System:IsStandalone() then
+        return -1
+    end
+    return Character:GetLocalPlayerId()
 end

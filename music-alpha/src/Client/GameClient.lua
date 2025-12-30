@@ -9,14 +9,14 @@ function GameClient:Init()
     System:BindNotify(NetMsg.S2C_ServerAck, self.OnServerAck, self)
     System:BindNotify(NetMsg.S2C_OnReconnected, self.OnReconnected, self)
 
-    -- InitClient()
+    InitGameClient()
 end
 
 -- 客户端游戏开始时
 function GameClient:OnStart()
     Log:PrintLog("[GameClient:OnStart]")
 
-    InitGameClient()
+    StartGameClient()
     -- TimerManager:AddTimer(1, PlaySfx, "starmantwo", "piano")
     -- TimerManager:AddTimer(11, PlaySfx, "ending", "piano")
     -- TimerManager:AddTimer(21, PlaySfx, "gameover", "piano")

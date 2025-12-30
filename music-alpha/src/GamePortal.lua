@@ -1,55 +1,64 @@
 require("MainGame")
 
+
 --初始化客户端
 function InitGameClient()
+    ClientInit()
+end
+
+function StartGameClient()
     --初始化共有变量
-    InitVars()
+    InitVarsOnStart()
     --初始化客户端变量
-    InitVarsClient()
+    InitVarsClientOnStart()
 
-    PreInitGameClient()
-    InitClient()
-    PostInitGameClient()
+    PreInitGameClientOnStart()
+    InitClientOnStart()
+    PostInitGameClientOnStart()
 end
 
-function PostInitGameClient()
-    PostInitClient()
+function PostInitGameClientOnStart()
+    PostInitClientOnStart()
 
-    PushActionToServer(false, "OnGameClientInited", {})
+    PushActionToServer(false, "OnGameClientStarted", {})
 end
 
-function OnGameClientInited()
-    OnClientInited()
+function OnGameClientStarted()
+    OnClientStarted()
 end
 
-function PreInitGameClient()
+function PreInitGameClientOnStart()
     print("BindNotify PrepareClient")
-    PreInitAll(true)
+    PreInitAllOnStart(true)
 end
 
 --初始化服务端
 function InitGameServer()
+    ServerInit()
+end
+
+function StartGameServer()
     --初始化共有变量
-    InitVars()
+    InitVarsOnStart()
     --初始化服务器变量
-    InitVarsServer()
+    InitVarsServerOnStart()
 
-    PreInitGameServer()
-    InitServer()
-    PostInitGameServer()
+    PreInitGameServerOnStart()
+    InitServerOnStart()
+    PostInitGameServerOnStart()
 end
 
-function PostInitGameServer()
-    PostInitServer()
+function PostInitGameServerOnStart()
+    PostInitServerOnStart()
 end
 
-function PreInitGameServer()
+function PreInitGameServerOnStart()
     print("BindNotify PreInitGameServer")
-    PreInitAll(false)
+    PreInitAllOnStart(false)
 end
 
 ---客户端和服务端都必须初始化的
-function PreInitAll(isClient)
+function PreInitAllOnStart(isClient)
     if isClient and System:IsStandalone() then
         return
     end
