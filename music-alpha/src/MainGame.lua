@@ -14,7 +14,7 @@ local cfgDataNames = {"ymAnimes"}
 local haohaoyaId = 327
 animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
 ymAnimes = {}
-local elesInScene = {airwall=331, cube=381, brick=334}
+local elesInScene = {airwall=331, cube=381, brick=334, frameBoard=531}
 local tetrisBoard = {parts={}, columnHeights={}}
 cfgTetrisBlock_1_1 = {parts={{1,1,0,0}, {0,1,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=1, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
 -- cfgTetrisBlock_1_2 = {parts={{0,0,0,0}, {0,1,0,0}, {1,1,0,0}, {1,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, entityDiffRow=1, entityDiffCol=0, rotate={x=90, y=0, z=90}}}
@@ -30,7 +30,6 @@ function CallbackCharCreated(playerId)
 end
 
 function ClientInit()
-    RegisterEventsClient()
 end
 
 function ServerInit()
@@ -39,6 +38,10 @@ end
 
 function InitClientOnStart()
     InitMusicClient()
+end
+
+function GamePreInitAll()
+    RegisterEventsAll()
 end
 
 function InitServerOnStart() 
@@ -53,8 +56,6 @@ function InitServerOnStart()
         InitMusic()
     end
 
-    InitTetrisData()
-    
 end
 
 function InitVarsClientOnStart()
@@ -76,7 +77,13 @@ function OnClientStarted()
     Creature:SetScale(haohaoyaId, 3)
 end
 
-function InitVarsOnStart()
+function GameInitVars()
+    ServerLog("GameInitVars")
+
+    cfgElements.airWall = {id=1105000000000074, size=Engine.Vector(5,5,3)}
+    cfgElements.cube = {id=1101002001034000, size=Engine.Vector(1,1,1)}
+    cfgElements.cubeNight = {id=1101002001105000, size=Engine.Vector(1,1,1)}
+
     posOrg = Element:GetPosition(platformId)
     LoadGlobalVarsFromData(cfgDataNames)
     print("animeData sss ", MiscService:Table2JsonStr(ymAnimes))
@@ -91,6 +98,11 @@ function InitVarsOnStart()
     -- PushSyncVar(varMsg, "posOrg", posOrg)
     -- PushSyncVar(varMsg, "ymAnimes", ymAnimes)
     -- PushActionToClients(false, "SyncGlobalVars", varMsg)
+
+    InitTetrisData()
+end
+
+function InitVarsOnStart()
 end
 
 function PlayAnime()
@@ -144,7 +156,7 @@ function InitServerTimers()
     AddTimerTask(TaskNames.task1s, "genBoss", 2, 30, GenBoss)
     AddTimerTask(TaskNames.task1s, "GenBlockBall", 2, 10, GenBlockBall)
     AddTimerTask(TaskNames.task1s, "playAnime", 3, 0.9, PlayAnime)
-    AddTimerTask(TaskNames.task1s, "playAnime", 2, 1, GenTetrisDropBlock)
+    AddTimerTask(TaskNames.task1s, "GenTetrisDropBlock", 2, 1, GenTetrisDropBlock)
     -- AddTimerTask("1sTasks", "sfxTest", 3, 60, function ()
     --     PlaySfx("starmantwo")
     -- end)
@@ -169,6 +181,7 @@ end
 
 function InitTetrisData()
     tetrisPlayerData.boardPosTab = VectorToTable(VectorPlus(posOrg, 0, 0, 0))
+    ServerLog("InitTetrisData tetrisPlayerData ", MiscService:Table2JsonStr(tetrisPlayerData))
     --生成配置变量
     GenTetrisBlockCfgByRotateMulti(cfgTetrisBlock_1_1, 3)
     --初始化方块配置
@@ -602,11 +615,12 @@ end
 
 --开始一场对局
 function StartTetrisMatch(playerIds)
-    local id = GetIdFromPool("tetrisMatchId", cfgTetris.matchIdStart, 1, 10)
+    ServerLog("StartTetrisMatch start")
+    local id = GetIdFromPoolStringfy("tetrisMatchId", cfgTetris.matchIdStart, 1, 10)
     local match = {id=id, players={}}
     tetrisMatchs[id] = match
     for index, pid in ipairs(playerIds) do
-        match.players[pid] = {id=pid}
+        match.players[Stringfy(pid)] = {id=pid}
     end
     --数据端生成棋盘
     print("StartTetrisMatch done ", id)
@@ -615,9 +629,24 @@ function StartTetrisMatch(playerIds)
 end
 
 function GenTetrisBoardData(action)
-    local board = {parts={}, columnHeights={}}
+    local board = {parts={}, columnHeights={}, matchId=action.match.id, boardPosTab=tetrisPlayerData.boardPosTab}
     InitTetrisBoard(tetrisBoard, cfgTetris.board.rowNum, cfgTetris.board.colNum)
     action.match.board = board
+    local newAction = NewTetrisAction(action.match, nil, nil, "InitTetrisBoardEntity")
+    print("SendTetrisActionToMatchPlayers newAction ", newAction.funcName)
+    SendTetrisActionToMatchPlayers(newAction)
+end
+
+function InitTetrisBoardEntity(action)
+    local callback = function ()
+    end
+    local posTab = VectorTablePlus(action.match.board.boardPosTab, cfgTetris.blockSize + cfgTetris.blockSize * cfgTetris.board.colNum / 2, 0, 0)
+    CopyElementAndChildrenServerEzScale(elesInScene.frameBoard, cfgCopyProps, callback, VectorFromTable(posTab),
+    cfgElements.cube.size, cfgTetris.blockSize * cfgTetris.board.colNum, cfgTetris.blockSize, cfgTetris.blockSize * cfgTetris.board.rowNum, nil)
+end
+
+function SendTetrisActionToMatchPlayers(action)
+    SendTetrisActionToPlayers(action, action.match.players)
 end
 
 function NewTetrisAction(match, board, block, funcName)
@@ -638,12 +667,17 @@ function SendTetrisActionToPlayers(action, players)
 end
 
 function SendTetrisActionToSinglePlayer(action, playerId)
-    PushActionToPlayer(false, "TetrisAction", {action=action}, playerId)
+    ServerLog("SendTetrisActionToSinglePlayer ", action.funcName, " ", playerId, " ", GetLocalPlayerId())
+    if GetLocalPlayerId() == playerId then
+        TetrisAction({action=action})
+    else
+        PushActionToPlayer(false, "TetrisAction", {action=action}, playerId)
+    end
 end
 
 function TetrisAction(actionObj)
     local action = actionObj.action
-    print("TetrisAction ", action.funcName)
+    ServerLog("TetrisAction ", MiscService:Table2JsonStr(actionObj))
     _G[action.funcName](action)
 end
 
@@ -653,12 +687,13 @@ end
 
 --发往数据端
 function SendTetrisActionToDataSide(action)
-    if IsTetrisMatchDataOnLocal(action.match) then
-        TetrisAction({action=action})
-        return
-    end
+    -- if IsTetrisMatchDataOnLocal(action.match) then
+    --     TetrisAction({action=action})
+    --     return
+    -- end
+    ServerLog("SendTetrisActionToDataSide ", MiscService:Table2JsonStr(action))
     local dataPlayerId = GetTetrisMatchDataSidePlayerId(action.match)
-    SendTetrisActionToSinglePlayer(dataPlayerId)
+    SendTetrisActionToSinglePlayer(action, dataPlayerId)
 end
 
 
@@ -981,9 +1016,7 @@ function GenBrickTest()
 end
 
 function InitBlockProto()
-    cfgElements.airWall = {id=1105000000000074, size=Engine.Vector(5,5,3)}
-    cfgElements.cube = {id=1101002001034000, size=Engine.Vector(1,1,1)}
-    cfgElements.cubeNight = {id=1101002001105000, size=Engine.Vector(1,1,1)}
+    
     protos.blockUnknown = {}
     protos.blockUnknownMotion = {}
     protos.blockBrick = {}
@@ -1247,11 +1280,12 @@ function CallbackPlayerTouchEle(eid, player)
 end
 
 function RegisterEventsServer() 
-    System:RegisterEvent(Events.ON_CHARACTER_CREATED, CallbackCharCreated)
-    System:RegisterEvent(Events.ON_ELEMENT_TOUCH_PLAYER, CallbackPlayerTouchEle)
 end
 
-function RegisterEventsClient()
+function RegisterEventsAll()
+    System:RegisterEvent(Events.ON_CHARACTER_CREATED, CallbackCharCreated)
+    System:RegisterEvent(Events.ON_ELEMENT_TOUCH_PLAYER, CallbackPlayerTouchEle)
+
     System:RegisterEvent(Events.ON_BUTTON_PRESSED, ButtonPressed)
     System:RegisterEvent(Events.ON_PLAYER_ENTER, OnPlayerEnter)
     System:RegisterEvent(Events.ON_PLAYER_LEAVE, OnPlayerLeave)

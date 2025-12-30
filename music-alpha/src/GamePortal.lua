@@ -3,6 +3,7 @@ require("MainGame")
 
 --初始化客户端
 function InitGameClient()
+    PreInitAll(true)
     ClientInit()
 end
 
@@ -34,6 +35,7 @@ end
 
 --初始化服务端
 function InitGameServer()
+    PreInitAll(false)
     ServerInit()
 end
 
@@ -57,13 +59,21 @@ function PreInitGameServerOnStart()
     PreInitAllOnStart(false)
 end
 
+function PreInitAll(isClient)
+    if isClient and System:IsStandalone() then
+        return
+    end
+    GameInitVars()
+    BindNotifyAction()
+    GamePreInitAll()
+end
+
 ---客户端和服务端都必须初始化的
 function PreInitAllOnStart(isClient)
     if isClient and System:IsStandalone() then
         return
     end
     ServerLog("PreInitAll start")
-    BindNotifyAction()
 
     TimerManager:AddLoopFrame(0, OnUpdateFrameTime)
 

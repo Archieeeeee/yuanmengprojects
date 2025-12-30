@@ -1184,6 +1184,14 @@ function VectorTablePlus(tab, x, y, z)
     return {x = (tab.x + x), y = (tab.y + y), z = (tab.z + z)}
 end
 
+function Stringfy(value)
+    return string.format("%s", value)
+end
+
+function GetIdFromPoolStringfy(poolName, startNum, incNum, poolSize)
+    return Stringfy(GetIdFromPool(poolName, startNum, incNum, poolSize))
+end
+
 --从id池中拿取
 function GetIdFromPool(poolName, startNum, incNum, poolSize)
     local pool = toolIdPools[poolName]
@@ -1228,7 +1236,7 @@ function GetTablePairLen(tab)
 end
 
 function GetLocalPlayerId()
-    if System:IsStandalone() then
+    if System:IsServer() and not System:IsStandalone() then
         return -1
     end
     return Character:GetLocalPlayerId()
