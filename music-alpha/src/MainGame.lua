@@ -158,12 +158,13 @@ end
 
 function InitServerTimers() 
     -- TimerManager:AddLoopTimer(5, GenBlock)
-    
-    AddTimerTask(TaskNames.task1s, "genBlock", 2, 10, GenBlock)
-    AddTimerTask(TaskNames.task1s, "genBoss", 2, 30, GenBoss)
-    AddTimerTask(TaskNames.task1s, "GenBlockBall", 2, 10, GenBlockBall)
-    AddTimerTask(TaskNames.task1s, "playAnime", 3, 0.9, PlayAnime)
-    
+    if false then
+        AddTimerTask(TaskNames.task1s, "genBlock", 2, 10, GenBlock)
+        AddTimerTask(TaskNames.task1s, "genBoss", 2, 30, GenBoss)
+        AddTimerTask(TaskNames.task1s, "GenBlockBall", 2, 10, GenBlockBall)
+        AddTimerTask(TaskNames.task1s, "playAnime", 3, 0.9, PlayAnime)
+    end
+    AddTimerTask(TaskNames.task1s, "StartTetrisMatchAll", 3, 9999, StartTetrisMatchAll)
     -- AddTimerTask("1sTasks", "sfxTest", 3, 60, function ()
     --     PlaySfx("starmantwo")
     -- end)
@@ -328,7 +329,8 @@ function NewTetrisBlock(type, morph)
     local id = GetIdFromPoolStringfy("dropBlockId", 0, 1, 10, nil)
     local block = {id=id, active=true, dropInited=false, solidet=false, localData={}}
     SetTetrisBlockCfg(block, type, morph)
-    block.curColumn = math.floor(cfgTetris.board.colNum / 2)
+    -- block.curColumn = math.floor(cfgTetris.board.colNum / 2)
+    block.curColumn = math.random(1, cfgTetris.board.colNum - 4)
     return block
 end
 
@@ -375,19 +377,29 @@ function SyncTetrisMatchData(action)
     for key, player in pairs(matchLocal.players) do
         for key, block in pairs(player.dropBlocks) do
             local blockLocal = matchLocalBak.players[player.id].dropBlocks[block.id]
-            block.localData = blockLocal.localData
-            --本人的方块用本地数据
-            if IsBlockPlayerSelf(block) then
-                block.curColumn = blockLocal.curColumn
-                block.curRow = blockLocal.curRow
-                block.posTab = blockLocal.posTab
+            if blockLocal ~= nil then
+                block.localData = blockLocal.localData
+                --本人的方块用本地数据
+                if IsBlockPlayerSelf(block) then
+                    block.curColumn = blockLocal.curColumn
+                    block.curRow = blockLocal.curRow
+                    block.posTab = blockLocal.posTab
+                end
             end
         end
     end
 end
 
+function GetTetrisBlockByBlock(block, matchs)
+    local match = matchs[block.matchId]
+    if match ~= nil then
+        return match.players[block.playerId].dropBlocks[block.id]
+    end
+    return nil
+end
+
 function GetTetrisLocalBlock(block)
-    return tetrisMatchsLocal[block.matchId].players[block.playerId].dropBlocks[block.id]
+    return GetTetrisBlockByBlock(block, tetrisMatchsLocal)
 end
 
 function NewTetrisBlockEntity(action)
@@ -405,6 +417,7 @@ end
 
 ---方块实体化
 function InitTetrisBlockEntity(block, match)
+    print("InitTetrisBlockEntitystart ", block.objId)
     local board = match.board
     local posSrc = VectorFromTable(board.boardPosTab)
     local dropHigh = (GetTetrisBoardRowNum(board) + 2) * cfgTetris.blockSize
@@ -542,14 +555,15 @@ function CheckTetrisBlockState(block, obj)
         return
     end
     if IsBlockPlayerSelf(block) then
-        CheckTetrisBlockMerge(board, block, obj, false)
+        CheckTetrisBlockMerge(match, block, obj, false)
     end
 end
 
 ---是否重叠,不重叠返回true
-function CheckTetrisBlockMerge(board, block, obj, isTest)
+function CheckTetrisBlockMerge(match, block, obj, isTest)
     -- print("CheckTetrisBlockMerge ", MiscService:Table2JsonStr(block))
     -- print("CheckTetrisBlockMerge board ", MiscService:Table2JsonStr(board))
+    local board = match.board
     local blockColumn = block.curColumn
     local blockRowCur = math.floor(block.curRow)
     --检查是否开始下落了,因为刚生成时位置可能在棋盘底部
@@ -594,11 +608,15 @@ function CheckTetrisBlockMerge(board, block, obj, isTest)
     end
     local mergeRow = (blockRow + 1)
     block.mergeRow = mergeRow
-    tetrisPlayerData.dropBlocks[obj.id] = nil
-    RemoveMotionByEidAndName(obj.id, "drop")
-    SolidifyTetrisBlock(block, mergeRow, blockColumn)
+    tetrisMatchsLocal[block.matchId].players[block.playerId].dropBlocks[block.id] = nil
+    RemoveMotionByEidAndName(block.localData.awId, "drop")
+    SolidifyTetrisBlock(block, mergeRow, blockColumn, board)
     --如果重叠进行合并, 合并到上一行的位置
-    SendTetrisActionToDataSide(NewTetrisAction(nil, nil, block, "MergeTetrisBlockData"))
+    SendTetrisActionToDataSide(NewTetrisAction(match, nil, block, "MergeTetrisBlockData"))
+end
+
+function RemoveTetrisBlockData(block)
+    tetrisMatchs[block.matchId].players[block.playerId].dropBlocks[block.id] = nil
 end
 
 function MergeTetrisBlockData(action)
@@ -607,8 +625,10 @@ function MergeTetrisBlockData(action)
     local blockParts = block.blockParts
     local colNum = #blockParts[1]
     local rowNum = #blockParts
-    local board = tetrisMatchs[block.matchId].board
+    local match = tetrisMatchs[block.matchId]
+    local board = match.board
     local blockColumn = block.curColumn
+    RemoveTetrisBlockData(block)
     print("isOverlap mergeRow ", mergeRow, " ", blockColumn)
     for i = 1, rowNum do
         for j = 1, colNum do
@@ -632,14 +652,21 @@ function MergeTetrisBlockData(action)
             end
         end
     end
+    SendSyncTetrisMatchDataToPlayers(tetrisMatchs[block.matchId])
+    SendTetrisActionToMatchPlayers(NewTetrisAction(match, nil, block, "SolidifyTetrisBlockAction"))
+end
+
+function SolidifyTetrisBlockAction(action)
+    local match = GetMatchLocalByBlock(action.block)
+    SolidifyTetrisBlock(action.block, action.block.mergeRow, action.block.curColumn, match.board)
 end
 
 --固化方块
-function SolidifyTetrisBlock(block, row, column)
+function SolidifyTetrisBlock(block, row, column, board)
     block.solidet = true
     block.curRow = row
     block.curColumn = column
-    local posTabSrc = tetrisPlayerData.boardPosTab
+    local posTabSrc = board.boardPosTab
     block.posTab = NewVectorTable(GetTetrisBlockPosX(block, posTabSrc), posTabSrc.y, posTabSrc.z + block.curRow * cfgTetris.blockSize)
     SyncTetrisBlockEntityStateWithData(block)
 end
@@ -687,15 +714,19 @@ function ControlActionTetrisDropBlock(isRotate, isMoveLeft)
     end
 end
 
+function StartTetrisMatchAll()
+    StartTetrisMatch(players)
+end
+
 --开始一场对局
-function StartTetrisMatch(playerIds)
+function StartTetrisMatch(players)
     ServerLog("StartTetrisMatch start")
     local id = GetIdFromPoolStringfy("tetrisMatchId", cfgTetris.matchIdStart, 1, 10, nil)
     local boardPosTab=VectorToTable(VectorPlus(posOrg, 0, 0, 0))
     local match = {id=id, players={}, dropSpeed=100, boardPosTab=boardPosTab, active=true}
     tetrisMatchsServer[id] = match
-    for index, pid in ipairs(playerIds) do
-        match.players[pid] = {id=pid, dropBlocks={}}
+    for index, player in pairs(players) do
+        match.players[player.id] = {id=player.id, dropBlocks={}}
     end
     --通知数据端生成棋盘
     print("StartTetrisMatch done ", id)
@@ -746,7 +777,7 @@ end
 
 function SendTetrisActionToSinglePlayer(action, playerId)
     ServerLog("SendTetrisActionToSinglePlayer ", action.funcName, " ", playerId, " ", GetLocalPlayerId())
-    if GetLocalPlayerId() == playerId then
+    if IsStringEqual(playerId, GetLocalPlayerId()) then
         TetrisAction({action=action})
     else
         PushActionToPlayer(false, "TetrisAction", {action=action}, UMath:StringToNumber(playerId))
@@ -755,7 +786,7 @@ end
 
 function TetrisAction(actionObj)
     local action = actionObj.action
-    ServerLog("TetrisAction ", MiscService:Table2JsonStr(actionObj))
+    ServerLog("TetrisActionAct ", MiscService:Table2JsonStr(actionObj))
     _G[action.funcName](action)
 end
 
@@ -765,10 +796,6 @@ end
 
 --发往数据端
 function SendTetrisActionToDataSide(action)
-    -- if IsTetrisMatchDataOnLocal(action.match) then
-    --     TetrisAction({action=action})
-    --     return
-    -- end
     ServerLog("SendTetrisActionToDataSide ", MiscService:Table2JsonStr(action))
     local dataPlayerId = GetTetrisMatchDataSidePlayerId(action.match)
     SendTetrisActionToSinglePlayer(action, dataPlayerId)
@@ -777,6 +804,9 @@ end
 
 --获取数据端的玩家id。 -1表示服务端
 function GetTetrisMatchDataSidePlayerId(match)
+    if true then
+        return -1
+    end
     if System:IsStandalone() then
         return -1
     end
@@ -787,11 +817,6 @@ function GetTetrisMatchDataSidePlayerId(match)
         end
     end
     return -1
-end
-
---判断数据是否在本机
-function IsTetrisMatchDataOnLocal(match)
-    return GetLocalPlayerId() == GetTetrisMatchDataSidePlayerId(match)
 end
 
 
@@ -1373,7 +1398,6 @@ end
 function OnPlayerEnter(playerId)
     playerId = Stringfy(playerId)
     players[playerId] = {id=playerId}
-    TimerManager:AddTimer(3, StartTetrisMatch, {playerId})
 end
 
 function OnPlayerLeave(playerId)
