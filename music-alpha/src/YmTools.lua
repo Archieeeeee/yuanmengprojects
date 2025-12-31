@@ -1188,24 +1188,30 @@ function Stringfy(value)
     return string.format("%s", value)
 end
 
-function GetIdFromPoolStringfy(poolName, startNum, incNum, poolSize)
-    return Stringfy(GetIdFromPool(poolName, startNum, incNum, poolSize))
+function GetIdFromPoolStringfy(poolName, startNum, incNum, poolSize, poolObj)
+    return Stringfy(GetIdFromPool(poolName, startNum, incNum, poolSize, poolObj))
 end
 
 --从id池中拿取
-function GetIdFromPool(poolName, startNum, incNum, poolSize)
+function GetIdFromPool(poolName, startNum, incNum, poolSize, poolObj)
     local pool = toolIdPools[poolName]
+    if poolObj ~= nil then
+        if poolObj.idPools == nil then
+            poolObj.idPools = {}
+        end
+        pool = poolObj.idPools[poolName]
+    end
     if pool == nil then
         pool = {cur=startNum, size=poolSize, avaIds={}}
         toolIdPools[poolName] = pool
         pool.cur = pool.cur + 1
-        pool.avaIds[pool.cur] = {id = pool.cur, used=false}
+        pool.avaIds[Stringfy(pool.cur)] = {id = pool.cur, used=false}
     end
     local c = GetTablePairLen(pool.avaIds)
     if c < poolSize then
         for i = 0, (poolSize - c) do
             pool.cur = pool.cur + 1
-            pool.avaIds[pool.cur] = {id = pool.cur, used=false}
+            pool.avaIds[Stringfy(pool.cur)] = {id = pool.cur, used=false}
         end
     end
     
@@ -1233,6 +1239,14 @@ function GetTablePairLen(tab)
         c = c + 1
     end
     return c
+end
+
+function IsStringEqual(a, b)
+    return Stringfy(a) == Stringfy(b)
+end
+
+function GetLocalPlayerIdString()
+    return Stringfy(GetLocalPlayerId())
 end
 
 function GetLocalPlayerId()

@@ -63,17 +63,8 @@ function PreInitAll(isClient)
     if isClient and System:IsStandalone() then
         return
     end
-    GameInitVars()
-    BindNotifyAction()
-    GamePreInitAll()
-end
 
----客户端和服务端都必须初始化的
-function PreInitAllOnStart(isClient)
-    if isClient and System:IsStandalone() then
-        return
-    end
-    ServerLog("PreInitAll start")
+    InitTimeState()
 
     TimerManager:AddLoopFrame(0, OnUpdateFrameTime)
 
@@ -86,6 +77,20 @@ function PreInitAllOnStart(isClient)
     --每一帧都检查的定时任务: delay为0
     -- AddLoopTimerWithInit(0, 0, RunAllTimerTasks, TaskNames.taskFrame)
     AddTimerTask(TaskNames.task1s, "OnUpdateFrame", 0, 0, OnUpdateFrame)
+
+    GameInitVars()
+    BindNotifyAction()
+    GamePreInitAll()
+end
+
+---客户端和服务端都必须初始化的
+function PreInitAllOnStart(isClient)
+    if isClient and System:IsStandalone() then
+        return
+    end
+    ServerLog("PreInitAllOnStart start")
+
+    
 end
 
 function UpdateGameClient()
