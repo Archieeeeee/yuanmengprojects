@@ -1,5 +1,6 @@
 require("MainGame")
 
+local shareActionState = {}
 
 --初始化客户端
 function InitGameClient()
@@ -16,6 +17,13 @@ function StartGameClient()
     PreInitGameClientOnStart()
     InitClientOnStart()
     PostInitGameClientOnStart()
+end
+
+function InitVarsOnStart()
+    if not CanRunOnce(shareActionState, "InitVarsOnStart") then
+        return
+    end
+    GameInitVarsOnStart()
 end
 
 function PostInitGameClientOnStart()
@@ -60,7 +68,7 @@ function PreInitGameServerOnStart()
 end
 
 function PreInitAll(isClient)
-    if isClient and System:IsStandalone() then
+    if not CanRunOnce(shareActionState, "PreInitAll") then
         return
     end
 
@@ -85,7 +93,7 @@ end
 
 ---客户端和服务端都必须初始化的
 function PreInitAllOnStart(isClient)
-    if isClient and System:IsStandalone() then
+    if not CanRunOnce(shareActionState, "PreInitAllOnStart") then
         return
     end
     ServerLog("PreInitAllOnStart start")

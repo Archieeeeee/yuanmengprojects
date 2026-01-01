@@ -15,6 +15,7 @@ posFarthest = Engine.Vector(-80000, -80000, -80000)
 ObjGroups = {Element=0, MotionUnit=2}
 CfgTools = {MotionUnit={Types={Pos=1, Scale=3, Rotate=5}}}
 local toolIdPools = {}
+local toolCommonCfgs = {serverPlayerId = -1}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -391,6 +392,10 @@ end
 ---@param dstId any 目标id, 空代表发送到服务端
 function PushAction(doSelf, funcName, funcArg, dstId, toAllClients)
     -- print("PushAction ", doSelf, " ", toAllClients, " ", funcName)
+    -- 预处理
+    if dstId == toolCommonCfgs.serverPlayerId then
+        dstId = nil
+    end
     local msg = {funcName = funcName, funcArg = funcArg}
     --如果是toAllClients并且是单机,那么本机一定会执行,就不需要重复了
     if toAllClients and System:IsStandalone() and doSelf then
@@ -410,10 +415,25 @@ function PushAction(doSelf, funcName, funcArg, dstId, toAllClients)
         if dstId == nil then
             System:SendToServer(MsgIds.commonAction, msg)
         else
-            System:SendToClient(dstId, MsgIds.commonAction, msg)
+            if System:IsServer() then
+                System:SendToClient(dstId, MsgIds.commonAction, msg)
+            else
+                --需要从服务器转发
+                SendTransActionToServer(funcName, funcArg, dstId)
+            end
         end
     end
 
+end
+
+function SendTransActionToServer(funcName, funcArg, dstId)
+    PushActionToServer(false, "TransActionToClient", {funcName=funcName, funcArg=funcArg, dstId = dstId})
+end
+
+function TransActionToClient(arg)
+    if System:IsServer() then
+        PushActionToPlayer(false, arg.funcName, arg.funcArg, arg.dstId)
+    end
 end
 
 function PushActionToClients(doSelf, funcName, funcArg)
@@ -1051,8 +1071,14 @@ function SpawnElementToScene(eleId, pos, callbackFunc, orgSize, x, y, z)
     Element:SpawnElement(Element.SPAWN_SOURCE.Config, eleId, callback, pos, Engine.Rotator(0,0,0), scale, true)
 end
 
+function InactiveObj(obj)
+    obj.active = false
+end
+
 --一般销毁
 function CommonDestroy(deltaTime, obj)
+    InactiveObj(obj)
+    -- todo should use obj eid
     DestroyElementAndChildren(obj.id)
 end
 
@@ -1251,7 +1277,15 @@ end
 
 function GetLocalPlayerId()
     if System:IsServer() and not System:IsStandalone() then
-        return -1
+        return toolCommonCfgs.serverPlayerId
     end
     return Character:GetLocalPlayerId()
+end
+
+function CanRunOnce(obj, name)
+    if obj.name ~= nil then
+        return false
+    end
+    obj.name = true
+    return true
 end
