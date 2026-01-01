@@ -17,6 +17,12 @@ ymAnimes = {}
 local elesInScene = {airwall=331, cube=381, brick=334, frameBoard=531}
 -- local tetrisBoard = {parts={}, columnHeights={}}
 cfgTetrisBlock_1_1 = {parts={{1,1,0,0}, {0,1,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=1, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_2_1 = {parts={{0,1,1,0}, {1,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=2, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_3_1 = {parts={{1,1,1,0}, {0,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=3, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_4_1 = {parts={{1,1,1,1}, {0,0,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=4, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_5_1 = {parts={{1,1,0,0}, {1,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=5, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_6_1 = {parts={{1,1,1,0}, {1,0,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=6, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_7_1 = {parts={{1,1,1,0}, {0,0,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=7, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
 -- cfgTetrisBlock_1_2 = {parts={{0,0,0,0}, {0,1,0,0}, {1,1,0,0}, {1,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, entityDiffRow=1, entityDiffCol=0, rotate={x=90, y=0, z=90}}}
 local cfgTetris = {blockSize=100, board={rowNum=20, colNum=10}, matchIdStart=0}
 -- local tetrisPlayerData = {dropSpeed=100, dropBlocks={}, boardPosTab=nil}
@@ -173,10 +179,23 @@ function InitServerTimers()
 end
 
 
-function GetActiveDropBlock(dropBlocks)
-    for key, block in pairs(dropBlocks) do
+function GetActiveDropBlock(blocks)
+    for key, block in pairs(blocks) do
         if block.active then
             return block
+        end
+    end
+    return nil
+end
+
+function GetTetrisControlBlock()
+    for key, match in pairs(tetrisMatchsLocal) do
+        for key, player in pairs(match.players) do
+            for key, block in pairs(player.dropBlocks) do
+                if block.active and IsBlockPlayerSelf(block) then
+                    return block
+                end
+            end
         end
     end
     return nil
@@ -197,7 +216,7 @@ function GenTetrisDropBlock()
 end
 
 function GenSingleTetrisDropBlock(match, player)
-    local block = NewTetrisBlock(1, 1)
+    local block = NewTetrisBlock(math.random(1, 7), 1)
     block.matchId = match.id
     block.playerId = player.id
     block.objId = string.format("tblock-%s-%s-%s", match.id, player.id, block.id)
@@ -220,7 +239,10 @@ end
 
 function InitTetrisData()
     --生成配置变量
-    GenTetrisBlockCfgByRotateMulti(cfgTetrisBlock_1_1, 3)
+    for type = 1, 7, 1 do
+        local varName = GetTetrisBlockCfgVarName(type, 1)
+        GenTetrisBlockCfgByRotateMulti(_G[varName], 3)
+    end
     --初始化方块配置
     for type = 1, 7 do
         for morph = 1, 4 do
@@ -372,9 +394,9 @@ end
 
 --发送同步
 function SendSyncTetrisMatchDataToPlayers(syncFuncName, match, block, excludeBlockPlayer)
-    local action = NewTetrisAction(match, nil, nil, "SyncTetrisMatchData")
+    local action = NewTetrisAction(match, nil, block, "SyncTetrisMatchData")
     action.syncFuncName = syncFuncName
-    for key, player in pairs(players) do
+    for key, player in pairs(match.players) do
         if excludeBlockPlayer then
             if not IsStringEqual(player.id, block.playerId) then
                 SendTetrisActionToSinglePlayer(action, player.id)
@@ -418,6 +440,7 @@ function SyncTetrisMatchDataUpdateBlock(action)
     end
     local blockLocal = GetTetrisLocalBlock(action.block)
     if blockLocal ~= nil then
+        print("SyncTetrisMatchDataUpdateBlockblockLocal")
         action.block.localData = blockLocal.localData
         --posTab永远用本地的,因为包含高度数据
         action.block.posTab = blockLocal.posTab
@@ -549,7 +572,7 @@ function GetMatchLocalByBlock(block)
 end
 
 function TetrisBlockDropMotionUpdate(obj, state, deltaTime)
-    local block = obj.motionObj.block
+    local block = GetTetrisLocalBlock(obj.motionObj.block)
     local match = GetMatchLocalByBlock(block)
     if block.solidet then
         return
@@ -758,7 +781,7 @@ function SolidifyTetrisBlockAction(action)
     local match = GetMatchLocalByBlock(action.block)
     local block = GetTetrisLocalBlock(action.block)
     if block ~= nil then
-        SolidifyTetrisBlock(block, block.mergeRow, block.curColumn, match.board)
+        SolidifyTetrisBlock(block, action.block.mergeRow, action.block.curColumn, match.board)
     end
 end
 
@@ -775,10 +798,10 @@ function SolidifyTetrisBlock(block, row, column, board)
 end
 
 --设置curColumn,保证不会方块不会超出棋盘
-function GetTetrisBlockColumnNotOverBoard(block, diffDesire)
+function GetTetrisBlockColumnNotOverBoard(block, diffDesire, match)
     --找出最左和最右的可用值
     local minCol = (1 - block.blockCfg.colStart + 1)
-    local maxCol = (#tetrisBoard.parts[1] - block.blockCfg.colEnd + 1)
+    local maxCol = (match.board.colNum - block.blockCfg.colEnd + 1)
     local col = block.curColumn + diffDesire
     if col > maxCol then
         col = maxCol
@@ -791,10 +814,11 @@ function GetTetrisBlockColumnNotOverBoard(block, diffDesire)
 end
 
 function ControlActionTetrisDropBlock(isRotate, isMoveLeft)
-    local block = GetActiveDropBlock(tetrisPlayerData)
+    local block = GetTetrisControlBlock()
     if block == nil then
         return
     end
+    local match = GetMatchLocalByBlock(block)
     local testBlock = CopyTableByJson(block)
     if isRotate then
         SetTetrisBlockCfg(testBlock, testBlock.blockCfg.type, testBlock.blockCfg.nextMorph)
@@ -807,13 +831,14 @@ function ControlActionTetrisDropBlock(isRotate, isMoveLeft)
             colDiff = 1
         end
     end
-    GetTetrisBlockColumnNotOverBoard(testBlock, colDiff)
+    GetTetrisBlockColumnNotOverBoard(testBlock, colDiff, match)
     -- print("ControlActionTetrisDropBlock ", MiscService:Table2JsonStr(testBlock))
-    local notOverlap = CheckTetrisBlockMerge(tetrisBoard, testBlock, nil, true)
+    local notOverlap = CheckTetrisBlockMerge(match, testBlock, nil, true)
     if notOverlap == true then
         block.blockParts = testBlock.blockParts
         block.blockCfg = testBlock.blockCfg
         block.curColumn = testBlock.curColumn
+        SendSyncTetrisMatchDataToPlayers("SyncTetrisMatchDataUpdateBlock", match, block, true)
     end
 end
 
