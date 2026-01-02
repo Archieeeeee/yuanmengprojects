@@ -15,7 +15,7 @@ posFarthest = Engine.Vector(-80000, -80000, -80000)
 ObjGroups = {Element=0, MotionUnit=2}
 CfgTools = {MotionUnit={Types={Pos=1, Scale=3, Rotate=5}}}
 local toolIdPools = {}
-local toolCommonCfgs = {serverPlayerId = -1}
+toolCommonCfgs = {serverPlayerId = -1}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -1075,6 +1075,13 @@ function InactiveObj(obj)
     obj.active = false
 end
 
+function InactiveObjById(id)
+    local obj = GetObjById(id)
+    if obj ~= nil then
+        InactiveObj(obj)
+    end
+end
+
 --一般销毁
 function CommonDestroy(deltaTime, obj)
     InactiveObj(obj)
@@ -1195,7 +1202,7 @@ end
 
 function RemoveMotionByEidAndName(eid, name)
     local id = string.format("%s-%s", eid, name)
-    GetObjById(id).active = false
+    InactiveObjById(id)
 end
 
 function CopyTableByJson(table)
@@ -1288,4 +1295,16 @@ function CanRunOnce(obj, name)
     end
     obj.name = true
     return true
+end
+
+function EnsureTableValue(tab, ...)
+    local keys = {...}
+    local parent = tab
+    for index, key in ipairs(keys) do
+        if parent[key] == nil then
+            parent[key] = {}
+        end
+        parent = parent[key]
+    end
+    return parent
 end

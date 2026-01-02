@@ -261,6 +261,26 @@ function GenTetrisBlockCfgByRotateMulti(blockCfg, num)
     end
 end
 
+--获取方块组件对应的本地实体化信息,逆时针反推
+function GetTetrisBlockPartLocalData(block, partRow, partCol)
+    local colNum = #block.blockParts[1]
+    local row = partRow
+    local col = partCol
+    if block.blockCfg.morph ~= 1 then
+        for i = block.blockCfg.morph, 2, -1 do
+            col = colNum + 1 - partRow
+            row = partCol
+            partCol = col
+            partRow = row
+        end
+    end
+    local rowData = block.localData.parts[Stringfy(row + block.blockCfg.entityDiffRow)]
+    if rowData == nil then
+        return nil
+    end
+    return rowData[Stringfy(col + block.blockCfg.entityDiffCol)]
+end
+
 --以方块的中心顺时针旋转90度
 function GenTetrisBlockCfgByRotate(blockCfg)
     local parts = blockCfg.parts
@@ -362,7 +382,7 @@ end
 ---新建方块
 function NewTetrisBlock(type, morph)
     local id = GetIdFromPoolStringfy("dropBlockId", 0, 1, 10, nil)
-    local block = {id=id, active=true, dropInited=false, solidet=false, localData={}}
+    local block = {id=id, active=true, dropInited=false, solidet=false, localData={parts={}}}
     SetTetrisBlockCfg(block, type, morph)
     -- block.curColumn = math.floor(cfgTetris.board.colNum / 2)
     block.curColumn = math.random(1, cfgTetris.board.colNum - 4)
@@ -394,17 +414,14 @@ end
 
 --发送同步
 function SendSyncTetrisMatchDataToPlayers(syncFuncName, match, block, excludeBlockPlayer)
-    local action = NewTetrisAction(match, nil, block, "SyncTetrisMatchData")
-    action.syncFuncName = syncFuncName
-    for key, player in pairs(match.players) do
-        if excludeBlockPlayer then
-            if not IsStringEqual(player.id, block.playerId) then
-                SendTetrisActionToSinglePlayer(action, player.id)
-            end
-        else
-            SendTetrisActionToSinglePlayer(action, player.id)
-        end
+    local action = nil
+    if excludeBlockPlayer then
+        action = NewTetrisActionExcludeBlockPlayer(match, nil, block, "SyncTetrisMatchData")
+    else
+        action = NewTetrisAction(match, nil, block, "SyncTetrisMatchData")
     end
+    action.syncFuncName = syncFuncName
+    SendTetrisActionToMatchPlayers(action)
 end
 
 function IsBlockPlayerSelf(block)
@@ -529,7 +546,7 @@ function InitTetrisBlockEntity(block, match)
                     --从中心点开始
                     partIdx = partIdx + 1
                     local bpos = VectorTablePlus(block.posTab, (colIdx - 0.5)* cfgTetris.blockSize, 0, (rowIdx - 1) * cfgTetris.blockSize)
-                    AddPartEntityToTetrisBlock(block, partIdx, awId, VectorFromTable(bpos))
+                    AddPartEntityToTetrisBlock(block, partIdx, awId, VectorFromTable(bpos), rowIdx, colIdx)
                 end
             end
         end
@@ -541,9 +558,10 @@ function InitTetrisBlockEntity(block, match)
 end
 
 ---给方块创建四个部件
-function AddPartEntityToTetrisBlock(block, partIdx, awId, bpos)
+function AddPartEntityToTetrisBlock(block, partIdx, awId, bpos, row, col)
     local callback = function (eid)
         Element:BindingToElement(eid, awId)
+        EnsureTableValue(block.localData.parts, Stringfy(row), Stringfy(col)).eid = eid
         if partIdx == 4 then
             -- PushActionToClients(true, "SyncMoveTetrisDropBlock", block)
             SyncMoveTetrisDropBlock(block)
@@ -774,7 +792,12 @@ function MergeTetrisBlockDataHandle(action)
         end
     end
     SendSyncTetrisMatchDataToPlayers("SyncTetrisMatchDataUpdateMatchNoPlayerData", match, nil, false)
-    SendTetrisActionToMatchPlayers(NewTetrisAction(match, nil, block, "SolidifyTetrisBlockAction"))
+    SendTetrisActionToMatchPlayers(NewTetrisActionExcludeBlockPlayer(match, nil, block, "SolidifyTetrisBlockAction"))
+    CheckTetrisBoardFullLine(match)
+end
+
+function CheckTetrisBoardFullLine(match)
+    
 end
 
 function SolidifyTetrisBlockAction(action)
@@ -787,8 +810,11 @@ end
 
 --固化方块
 function SolidifyTetrisBlock(block, row, column, board)
-    tetrisMatchsLocal[block.matchId].players[block.playerId].dropBlocks[block.id] = nil
+    -- 不删除而是标记失效
+    -- tetrisMatchsLocal[block.matchId].players[block.playerId].dropBlocks[block.id] = nil
+    InactiveObjById(block.objId)
     RemoveMotionByEidAndName(block.localData.awId, "drop")
+    block.active = false
     block.solidet = true
     block.curRow = row
     block.curColumn = column
@@ -890,7 +916,15 @@ function SendTetrisActionToMatchPlayers(action)
 end
 
 function NewTetrisAction(match, player, block, funcName)
+    if match == nil then
+        ServerLog("NewTetrisAction error match param nil ", funcName)
+    end
     local action = {match=match, player=player, block=block, funcName=funcName}
+    return action
+end
+
+function NewTetrisActionExcludeBlockPlayer(match, player, block, funcName)
+    local action = {match=match, player=player, block=block, funcName=funcName, excludeBlockPlayer=true}
     return action
 end
 
@@ -901,8 +935,23 @@ end
 
 
 function SendTetrisActionToPlayers(action, players)
+    --不用判断方块的情况
+    if action.block == nil then
+        for key, player in pairs(players) do
+            SendTetrisActionToSinglePlayer(action, player.id)
+        end
+        return
+    end
+    
+    --需要排除方块所有者的情况
     for key, player in pairs(players) do
-        SendTetrisActionToSinglePlayer(action, player.id)
+        if action.excludeBlockPlayer ~= nil then
+            if not IsStringEqual(player.id, action.block.playerId) then
+                SendTetrisActionToSinglePlayer(action, player.id)
+            end
+        else
+            SendTetrisActionToSinglePlayer(action, player.id)
+        end
     end
 end
 
@@ -935,11 +984,11 @@ end
 
 --获取数据端的玩家id。 -1表示服务端
 function GetTetrisMatchDataSidePlayerId(match)
-    if true then
-        return -1
-    end
     if System:IsStandalone() then
-        return -1
+        return GetLocalPlayerId()
+    end
+    if true then
+        return toolCommonCfgs.serverPlayerId
     end
     --单人模式
     if IsTetrisMatchSinglePlayer(match) then
@@ -1550,6 +1599,6 @@ function ButtonPressed(item)
     elseif item == 103376 then
         ControlActionTetrisDropBlock(false, true)
     elseif item == 104477 then
-        TestRotateBlock()      
+        -- TestRotateBlock()      
     end
 end
