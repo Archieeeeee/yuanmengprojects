@@ -441,6 +441,7 @@ end
 function SyncTetrisMatchDataUpdateMatchNoPlayerData(action)
     local matchLocal = tetrisMatchsLocal[action.match.id]
     action.match.players = matchLocal.players
+    action.match.solidetBlocks = matchLocal.solidetBlocks
     tetrisMatchsLocal[action.match.id] = action.match
 end
 
@@ -757,6 +758,7 @@ function MergeTetrisBlockDataTask()
     end
 end
 
+--这是在数据端执行的
 function MergeTetrisBlockDataHandle(action)
     local block = action.block
     local mergeRow = block.mergeRow
@@ -791,13 +793,33 @@ function MergeTetrisBlockDataHandle(action)
             end
         end
     end
+    PushTetrisSolidetBlock(block, tetrisMatchs)
     SendSyncTetrisMatchDataToPlayers("SyncTetrisMatchDataUpdateMatchNoPlayerData", match, nil, false)
     SendTetrisActionToMatchPlayers(NewTetrisActionExcludeBlockPlayer(match, nil, block, "SolidifyTetrisBlockAction"))
     CheckTetrisBoardFullLine(match)
 end
 
+--检查行满可消除
 function CheckTetrisBoardFullLine(match)
-    
+    local fullRows = {}
+    for row, rows in ipairs(match.board.parts) do
+        local rowFull = true
+        for col, value in ipairs(rows) do
+            if rowFull and value == 0 then
+                rowFull = false
+            end
+        end
+        if rowFull then
+            table.insert(fullRows, {row=row})
+        end
+    end
+    --重新赋值
+    for row = 1, match.board.rowNum do
+        --计算该行以下消除了
+        for col = 1, match.board.colNum do
+            xxx
+        end
+    end
 end
 
 function SolidifyTetrisBlockAction(action)
@@ -808,10 +830,15 @@ function SolidifyTetrisBlockAction(action)
     end
 end
 
---固化方块
+function PushTetrisSolidetBlock(block, matches)
+    EnsureTableValue(matches, block.matchId, "solidetBlocks")[block.objId] = block
+end
+
+--固化方块,这是在每个客户端执行的
 function SolidifyTetrisBlock(block, row, column, board)
     -- 不删除而是标记失效
     -- tetrisMatchsLocal[block.matchId].players[block.playerId].dropBlocks[block.id] = nil
+    PushTetrisSolidetBlock(block, tetrisMatchsLocal)
     InactiveObjById(block.objId)
     RemoveMotionByEidAndName(block.localData.awId, "drop")
     block.active = false
