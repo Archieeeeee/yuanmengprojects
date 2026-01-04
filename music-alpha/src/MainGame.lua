@@ -216,7 +216,7 @@ function GenTetrisDropBlock()
 end
 
 function GenSingleTetrisDropBlock(match, player)
-    local block = NewTetrisBlock(math.random(1, 7), 1)
+    local block = NewTetrisBlock(math.random(4, 4), 1)
     block.matchId = match.id
     block.playerId = player.id
     block.objId = string.format("tblock-%s-%s-%s", match.id, player.id, block.id)
@@ -368,7 +368,7 @@ function InitTetrisBoard(board, rowNum, columnNum)
     for i = 1, rowNum do
         local row = {}
         for j = 1, columnNum do
-            table.insert(row, 0)
+            table.insert(row, {val=0, localData={}})
         end
         table.insert(board.parts, row)
     end
@@ -682,7 +682,7 @@ function CheckTetrisBlockMerge(match, block, obj, isTest)
     -- print("CheckTetrisBlockMerge board ", MiscService:Table2JsonStr(board))
     local board = match.board
     local blockColumn = block.curColumn
-    local blockRowCur = math.floor(block.curRow)
+    local blockRowCur = math.ceil(block.curRow)
     --检查是否开始下落了,因为刚生成时位置可能在棋盘底部
     if blockRowCur > board.rowNum then
         block.dropInited = true
@@ -707,10 +707,10 @@ function CheckTetrisBlockMerge(match, block, obj, isTest)
     for col = 1, colNum do
         for row = 1, rowNum do
             if isOverlap == false then
-                local boardRow = board.parts[row + blockRow]
+                local boardRow = board.parts[row + blockRow - 1]
                 if boardRow ~= nil then
-                    local boardVal = boardRow[col + blockColumn]
-                    if boardVal ~= nil and boardVal ~=0 and blockParts[row][col] ~= 0 then
+                    local boardVal = boardRow[col + blockColumn - 1]
+                    if boardVal ~= nil and boardVal.val ~=0 and blockParts[row][col] ~= 0 then
                         isOverlap = true
                     end
                 end
@@ -774,52 +774,78 @@ function MergeTetrisBlockDataHandle(action)
     for i = 1, rowNum do
         for j = 1, colNum do
             if blockParts[i][j] ~= 0 then
-                local boardRow = mergeRow + i
-                if boardRow > #board.parts then
+                local boardRow = mergeRow + i - 1
+                if boardRow > board.rowNum then
                     print("mergeRow too high, probably to fail")
                     return false
                 end
-                board.parts[boardRow][j + blockColumn] = 1
+                board.parts[boardRow][j + blockColumn - 1].val = 1
             end
         end
     end
     --重新计算棋盘每一列的最高行
-    for col = 1, #board.parts[1] do
-        local found = false
-        for row = #board.parts, 1, -1 do
-            if found == false and board.parts[row][col] ~= 0 then
-                found = true
-                board.columnHeights[col] = row
-            end
-        end
-    end
+    CalcTetrisBoardColumnHeights(board)
     PushTetrisSolidetBlock(block, tetrisMatchs)
     SendSyncTetrisMatchDataToPlayers("SyncTetrisMatchDataUpdateMatchNoPlayerData", match, nil, false)
     SendTetrisActionToMatchPlayers(NewTetrisActionExcludeBlockPlayer(match, nil, block, "SolidifyTetrisBlockAction"))
     CheckTetrisBoardFullLine(match)
 end
 
+function CalcTetrisBoardColumnHeights(board)
+    for col = 1, board.colNum do
+        local found = false
+        board.columnHeights[col] = 0
+        for row = board.rowNum, 1, -1 do
+            if found == false and board.parts[row][col].val ~= 0 then
+                found = true
+                board.columnHeights[col] = row
+            end
+        end
+    end
+end
+
 --检查行满可消除
 function CheckTetrisBoardFullLine(match)
     local fullRows = {}
+    --一共消除了几行
+    local fullNum = 0
+    --记录消除后每一行需要下降几行
+    local rowDropNum = {}
     for row, rows in ipairs(match.board.parts) do
         local rowFull = true
         for col, value in ipairs(rows) do
-            if rowFull and value == 0 then
+            if rowFull and value.val == 0 then
                 rowFull = false
             end
         end
         if rowFull then
-            table.insert(fullRows, {row=row})
+            fullNum = fullNum + 1
+            fullRows[Stringfy(row)] = {row=row}
         end
+        rowDropNum[Stringfy(row)] = fullNum
+    end
+    ServerLog("CheckTetrisBoardFullLine ", MiscService:Table2JsonStr(fullRows), " ",
+        MiscService:Table2JsonStr(rowDropNum), " ", MiscService:Table2JsonStr(match.board))
+    if fullNum == 0 then
+        return
     end
     --重新赋值
+    local boardCopy = CopyTableWithoutKey(match.board, nil)
+    --非消除行下移
     for row = 1, match.board.rowNum do
-        --计算该行以下消除了
-        for col = 1, match.board.colNum do
-            xxx
+        if fullRows[Stringfy(row)] == nil then
+            local rowValue = boardCopy.parts[row]
+            match.board.parts[row - rowDropNum[Stringfy(row)]] = rowValue
         end
     end
+    --填充空白行
+    for row = 1, fullNum do
+        for col = 1, match.board.colNum do
+            match.board.parts[match.board.rowNum - row + 1][col] = {val=0, localData={}}
+        end
+    end
+    CalcTetrisBoardColumnHeights(match.board)
+    ServerLog("CheckTetrisBoardFullLinedone ", fullNum, " ", MiscService:Table2JsonStr(match.board))
 end
 
 function SolidifyTetrisBlockAction(action)
@@ -1602,9 +1628,21 @@ function RegisterEventsAll()
     System:RegisterEvent(Events.ON_PLAYER_JOIN_MIDWAY, OnPlayerJoinMidway)
 end
 
+local function DoTest()
+    local obja = {3, "aaa", [5]=888, m=3, ab={3,89}, as={3, {2, 1, 0}}, atp={a=3, ab="hhsdq", c={2, "ss"}}}
+    local objaCopy = CopyTableWithoutKey(obja, nil)
+    local objaCopy = CopyTableWithoutKey(obja, "ab")
+    print("DoTest 1")
+    Log:PrintTable(objaCopy)
+    print("DoTest 2")
+    Log:PrintTable(objaCopy)
+end
+
 function OnPlayerEnter(playerId)
     playerId = Stringfy(playerId)
     players[playerId] = {id=playerId}
+
+    -- DoTest()
 end
 
 function OnPlayerLeave(playerId)

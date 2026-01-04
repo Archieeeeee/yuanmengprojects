@@ -1308,3 +1308,26 @@ function EnsureTableValue(tab, ...)
     end
     return parent
 end
+
+--复制但是不包括指定键名
+function CopyTableWithoutKey(obj, keyName)
+    return CopyTableWithoutKeyHandle({}, obj, keyName)
+end
+
+function CopyTableWithoutKeyHandle(param, obj, keyName)
+    if type(obj) ~= "table" then
+        return obj
+    end
+    --防止重复生成
+    if param[obj] then
+        return param[obj]
+    end
+    local res = {}
+    for key, value in pairs(obj) do
+        if key ~= keyName then
+            res[CopyTableWithoutKeyHandle(param, key, keyName)] = CopyTableWithoutKeyHandle(param, value, keyName)
+        end
+    end
+    param[obj] = res
+    return res
+end
