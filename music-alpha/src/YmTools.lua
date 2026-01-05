@@ -1309,12 +1309,12 @@ function EnsureTableValue(tab, ...)
     return parent
 end
 
---复制但是不包括指定键名
-function CopyTableWithoutKey(obj, keyName)
-    return CopyTableWithoutKeyHandle({}, obj, keyName)
+--深度拷贝
+function CopyTableShallow(obj)
+    return CopyTableWithoutKeyHandle({}, obj)
 end
 
-function CopyTableWithoutKeyHandle(param, obj, keyName)
+function CopyTableWithoutKeyHandle(param, obj)
     if type(obj) ~= "table" then
         return obj
     end
@@ -1324,10 +1324,87 @@ function CopyTableWithoutKeyHandle(param, obj, keyName)
     end
     local res = {}
     for key, value in pairs(obj) do
-        if key ~= keyName then
-            res[CopyTableWithoutKeyHandle(param, key, keyName)] = CopyTableWithoutKeyHandle(param, value, keyName)
-        end
+        res[CopyTableWithoutKeyHandle(param, key)] = CopyTableWithoutKeyHandle(param, value)
     end
     param[obj] = res
     return res
+end
+
+--合并表,保留localTable中指定键名的数据
+local function MergeTablesHandle(remoteTable, localTable, preserveKeys)
+    -- 用于处理循环引用
+    local lookup_table = {}
+    preserveKeys = preserveKeys or {} -- 需要保留的本地数据键名列表，例如 {["config"] = true, ["userSettings"] = true}
+
+    local function _merge(remote, localTbl)
+        -- 如果远程数据不是表，直接返回远程数据（通常情况）
+        if type(remote) ~= "table" then
+            return remote
+        end
+        -- 如果本地数据不是表，或已处理过当前远程表（避免循环引用），则返回远程表的浅拷贝或自身引用
+        if type(localTbl) ~= "table" or lookup_table[remote] then
+            if lookup_table[remote] then
+                return lookup_table[remote]
+            end
+            local shallowCopy = {}
+            for k, v in pairs(remote) do
+                shallowCopy[k] = v
+            end
+            return shallowCopy
+        end
+
+        local mergedTable = {}
+        lookup_table[remote] = mergedTable -- 记录已处理，避免循环引用
+
+        -- 首先，遍历远程表，这是数据的基础
+        for key, remoteValue in pairs(remote) do
+            local localValue = localTbl[key]
+
+            -- 判断当前键是否在保留列表中，且本地数据中存在此键
+            if preserveKeys[key] and localValue ~= nil then
+                -- 如果本地数据中对应值也是表，则递归合并
+                if type(remoteValue) == "table" and type(localValue) == "table" then
+                    mergedTable[key] = _merge(remoteValue, localValue)
+                else
+                    -- 否则，使用本地数据的值
+                    mergedTable[key] = localValue
+                end
+            else
+                -- 不在保留列表的键，直接使用远程数据
+                -- 如果远程数据的值是表，且本地对应值也是表，则递归合并（使用空的本地表，确保远端结构优先）
+                if type(remoteValue) == "table" and type(localValue) == "table" then
+                    mergedTable[key] = _merge(remoteValue, localValue)
+                else
+                    mergedTable[key] = remoteValue
+                end
+            end
+        end
+
+        -- 其次，遍历本地表，将远程表中不存在、但本地表中存在的键加入合并结果（可选逻辑）
+        -- 注意：根据你的需求，你可能希望注释掉这部分，以确保结果严格基于远程表的结构
+        for key, localValue in pairs(localTbl) do
+            if mergedTable[key] == nil then
+                mergedTable[key] = localValue
+            end
+        end
+
+        -- -- 处理元表（可选，根据需求）
+        -- local remoteMetatable = getmetatable(remote)
+        -- if remoteMetatable then
+        --     setmetatable(mergedTable, remoteMetatable)
+        -- end
+
+        return mergedTable
+    end
+
+    return _merge(remoteTable, localTable)
+end
+
+function MergeTables(remoteTable, localTable, preserveKeys)
+    preserveKeys = preserveKeys or {}
+    local keyMap = {}
+    for index, value in ipairs(preserveKeys) do
+        keyMap[value] = true
+    end
+    return MergeTablesHandle(remoteTable, localTable, keyMap)
 end
