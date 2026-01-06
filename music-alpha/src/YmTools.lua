@@ -1408,3 +1408,12 @@ function MergeTables(remoteTable, localTable, preserveKeys)
     end
     return MergeTablesHandle(remoteTable, localTable, keyMap)
 end
+
+function printEz(...)
+    local args = {...}
+    local res = ""
+    for index, value in ipairs(args) do
+        res = string.format("%s %s", res, value)
+    end
+    print(res)
+end

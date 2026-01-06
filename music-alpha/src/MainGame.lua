@@ -24,7 +24,7 @@ cfgTetrisBlock_5_1 = {parts={{1,1,0,0}, {1,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={
 cfgTetrisBlock_6_1 = {parts={{1,1,1,0}, {1,0,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=6, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
 cfgTetrisBlock_7_1 = {parts={{1,1,1,0}, {0,0,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=7, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
 -- cfgTetrisBlock_1_2 = {parts={{0,0,0,0}, {0,1,0,0}, {1,1,0,0}, {1,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, entityDiffRow=1, entityDiffCol=0, rotate={x=90, y=0, z=90}}}
-local cfgTetris = {blockSize=100, board={rowNum=20, colNum=10, posX=150, posY=1850, posZ=400}, matchIdStart=0}
+local cfgTetris = {blockSize=100, dropSpeed=100, board={rowNum=20, colNum=10, posX=150, posY=1850, posZ=400}, matchIdStart=0}
 -- local tetrisPlayerData = {dropSpeed=100, dropBlocks={}, boardPosTab=nil}
 local players = {}
 --服务端只负责记录
@@ -216,7 +216,7 @@ function GenTetrisDropBlock()
 end
 
 function GenSingleTetrisDropBlock(match, player)
-    local block = NewTetrisBlock(math.random(4, 4), 1)
+    local block = NewTetrisBlock(math.random(1, 7), 1)
     block.matchId = match.id
     block.playerId = player.id
     block.objId = string.format("tblock-%s-%s-%s", match.id, player.id, block.id)
@@ -264,21 +264,30 @@ end
 --获取方块组件对应的本地实体化信息,逆时针反推
 function GetTetrisBlockPartLocalData(block, partRow, partCol)
     local colNum = #block.blockParts[1]
-    local row = partRow
-    local col = partCol
+    local row = partRow + block.blockCfg.entityDiffRow
+    local col = partCol + block.blockCfg.entityDiffCol
+    local calcRow = row
+    local calcCol = col
     if block.blockCfg.morph ~= 1 then
         for i = block.blockCfg.morph, 2, -1 do
-            col = colNum + 1 - partRow
-            row = partCol
-            partCol = col
-            partRow = row
+            col = colNum + 1 - calcRow
+            row = calcCol
+            calcCol = col
+            calcRow = row
         end
     end
-    local rowData = block.localData.parts[Stringfy(row + block.blockCfg.entityDiffRow)]
-    if rowData == nil then
-        return nil
+    -- local rowData = block.localData.parts[Stringfy(row + block.blockCfg.entityDiffRow)]
+    -- if rowData == nil then
+    --     return nil
+    -- end
+    -- return rowData[Stringfy(col + block.blockCfg.entityDiffCol)]
+    printEz("GetTetrisBlockPartLocalData", partRow, partCol, row, col)
+    local res = block.localData.parts[Stringfy(row)][Stringfy(col)]
+    if not res then
+        print("error GetTetrisBlockPartLocalData ")
     end
-    return rowData[Stringfy(col + block.blockCfg.entityDiffCol)]
+    print("GetTetrisBlockPartLocalData res ", MiscService:Table2JsonStr(res))
+    return res
 end
 
 --以方块的中心顺时针旋转90度
@@ -803,6 +812,7 @@ function MergeTetrisBlockToBoard(match, block, isClient)
                     boardPart.bid = block.objId
                     boardPart.bRow = i
                     boardPart.bCol = j
+                    boardPart.morph = block.blockCfg.morph
                 end
             end
         end
@@ -840,10 +850,12 @@ function MergeTetrisBlockDataHandle(action)
     --数据端不需要保留方块数据
     -- PushTetrisSolidetBlock(block, tetrisMatchs)
     --消除检查
-    CheckTetrisBoardFullLine(match)
+    local fullLineRes = CheckTetrisBoardFullLine(match)
     -- SendSyncTetrisMatchDataToPlayers("SyncTetrisMatchDataUpdateMatchNoPlayerData", match, nil, false)
+    print("MergeTetrisBlockDataHandle server ", MiscService:Table2JsonStr(tetrisMatchs[block.matchId].board))
     local resAction = NewTetrisAction(match, nil, block, "MergeTetrisBlockResOnClient")
     resAction.boardBeforeDrop = boardBeforeDrop
+    resAction.fullLineRes = fullLineRes
     SendTetrisActionToMatchPlayers(resAction)
 end
 
@@ -862,6 +874,7 @@ end
 
 --检查行满可消除
 function CheckTetrisBoardFullLine(match)
+    local res = {}
     local fullRows = {}
     --一共消除了几行
     local fullNum = 0
@@ -883,23 +896,40 @@ function CheckTetrisBoardFullLine(match)
     ServerLog("CheckTetrisBoardFullLine ", MiscService:Table2JsonStr(fullRows), " ",
         MiscService:Table2JsonStr(rowDropNum), " ", MiscService:Table2JsonStr(match.board))
     if fullNum == 0 then
-        return
+        return res
     end
     --将数据返回给客户端使用
-    match.fullRows = fullRows
-    match.fullNum = fullNum
-    match.rowDropNum = rowDropNum
+    res.fullRows = fullRows
+    res.fullNum = fullNum
+    res.rowDropNum = rowDropNum
     --重新赋值
     TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, false)
     CalcTetrisBoardColumnHeights(match.board)
     ServerLog("CheckTetrisBoardFullLinedone ", fullNum, " ", MiscService:Table2JsonStr(match.board))
+    return res
+end
+
+--获取拆解后的组件相对于postab的偏移
+function GetTetrisBoardPartDiffSolidet(part)
+    local pos = NewVectorTable(cfgTetris.blockSize / 2, 0, 0)
+    if part.morph == 1 then
+        return pos
+    end
+    for i = part.morph, 2, -1 do
+        pos = NewVectorTable(pos.z, 0, cfgTetris.blockSize - pos.x)
+    end
+    return pos
 end
 
 --计算棋盘组件位置
 function CalcTetrisBoardPartPos(board, part, newRowAfterDrop, col)
-    local x = board.boardPosTab.x + (col - 0.5) * cfgTetris.blockSize
-    local z = board.boardPosTab.z + (newRowAfterDrop - 1) * cfgTetris.blockSize
-    Element:SetPosition(part.localData.eid, Engine.Vector(x, board.boardPosTab.y, z), Element.COORDINATE.World)
+    --先计算组件的左下角
+    local pos = NewVectorTable(board.boardPosTab.x + (col - 1) * cfgTetris.blockSize, board.boardPosTab.y, board.boardPosTab.z + (newRowAfterDrop - 1) * cfgTetris.blockSize)
+    local posDiff1 = NewVectorTable(cfgTetris.blockSize / 2, 0, 0)
+    local posDiff2 = GetTetrisBoardPartDiffSolidet(part)
+    local posFinal = VectorTablePlus(pos, posDiff2.x, posDiff2.y, posDiff2.z)
+    -- print("CalcTetrisBoardPartPos ", MiscService:Table2JsonStr(pos), " ", MiscService:Table2JsonStr(posDiff2), " ", MiscService:Table2JsonStr(posFinal))
+    Element:SetPosition(part.localData.eid, VectorFromTable(posFinal), Element.COORDINATE.World)
 end
 
 function TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, isClient)
@@ -921,10 +951,11 @@ function TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, isClient)
                 if not toRemove then
                     --下移动作
                     if part.val ~= 0 then
+                        --xxx
                         CalcTetrisBoardPartPos(boardCopy, part, newRowAfterDrop, col)
                     end
                 else
-                    AddMotionToElement(part.localData.eid, "dropRemove", CfgTools.MotionUnit.Types.Pos, Engine.Vector(0,0,-200), 0, 0,
+                    AddMotionToElement(part.localData.eid, "dropRemove", CfgTools.MotionUnit.Types.Pos, Engine.Vector(800,0,0), 0, 0,
                     2, 0, 0, 0, 0)
                     --消除动作
                     TimerManager:AddTimer(2, function ()
@@ -958,12 +989,13 @@ function MergeTetrisBlockResOnClient(action)
     print("SolidifyTetrisBlockConfirmafter is ", MiscService:Table2JsonStr(matchLocal.board))
     --客户端执行掉落
     -- local matchLocalCopy = CopyTableWithoutKey(matchLocal, nil)
-    if action.match.fullRows then
-        TetrisBoardLineDrop(matchLocal, action.match.fullRows, action.match.fullNum, action.match.rowDropNum, true)
+    if action.fullLineRes and action.fullLineRes.fullRows then
+        TetrisBoardLineDrop(matchLocal, action.fullLineRes.fullRows, action.fullLineRes.fullNum, action.fullLineRes.rowDropNum, true)
     end
     print("SolidifyTetrisBlockConfirm CCC is ", MiscService:Table2JsonStr(matchLocal.board))
     --合并掉落后数据
     SyncTetrisMatchDataUpdateMatchNoPlayerData(action)
+    print("MergeTetrisBlockDataHandle client ", MiscService:Table2JsonStr(GetMatchLocalByBlock(block).board))
 end
 
 function SolidifyTetrisBlockAction(action)
@@ -1080,7 +1112,7 @@ function StartTetrisMatch(players)
     local id = GetIdFromPoolStringfy("tetrisMatchId", cfgTetris.matchIdStart, 1, 10, nil)
     -- local boardPosTab=VectorToTable(VectorPlus(posOrg, 0, 0, 0))
     local boardPosTab = NewVectorTable(cfgTetris.board.posX, cfgTetris.board.posY, cfgTetris.board.posZ)
-    local match = {id=id, players={}, dropSpeed=100, boardPosTab=boardPosTab, active=true}
+    local match = {id=id, players={}, dropSpeed=cfgTetris.dropSpeed, boardPosTab=boardPosTab, active=true}
     tetrisMatchsServer[id] = match
     for index, player in pairs(players) do
         match.players[player.id] = {id=player.id, dropBlocks={}}
