@@ -230,6 +230,8 @@ function GenSingleTetrisDropBlock(match, player)
     posSrc.X = GetTetrisBlockPosX(block, board.boardPosTab)
     block.posTabInit = VectorToTable(posSrc)
     block.posTab = CopyTableByJson(block.posTabInit)
+    block.localData.mposTab = NewVectorTableCopy(block.posTab)
+    block.localData.mrotateTab = NewVectorTableCopy(block.blockCfg.rotate)
 
     player.dropBlocks[block.id] = block
     
@@ -307,9 +309,10 @@ function GenTetrisBlockCfgByRotate(blockCfg)
     end
     copyCfg.cfg.morph = blockCfg.cfg.nextMorph
     copyCfg.cfg.rotate.x = copyCfg.cfg.rotate.x - 90
-    if copyCfg.cfg.rotate.x == (-270) then
-        copyCfg.cfg.rotate.x = 90
-    end
+    --xxx
+    -- if copyCfg.cfg.rotate.x == (-270) then
+    --     copyCfg.cfg.rotate.x = 90
+    -- end
     local varName = GetTetrisBlockCfgVarName(copyCfg.cfg.type, copyCfg.cfg.morph)
     _G[varName] = copyCfg
     print("GenTetrisBlockCfgByRotate ", MiscService:Table2JsonStr(copyCfg))
@@ -545,7 +548,7 @@ end
 ---方块实体化
 function InitTetrisBlockEntity(block, match)
     print("InitTetrisBlockEntitystart ", block.objId)
-    local blockCenterPosTab = GetTetrisBlockCenterPosTab(block)
+    local blockCenterPosTab = GetTetrisBlockCenterPosTab(block, block.posTab)
     -- local posSrc = posOrg + Engine.Vector(-300, 0, 1300)
     --原点创建父节点
     local awCallback = function (awId)
@@ -618,25 +621,79 @@ function TetrisBlockDropMotionUpdate(obj, state, deltaTime)
     if true or state.totalDelta < 18 then
         block.posTab =  NewVectorTable(x, block.posTab.y, z)
     end
-    SyncTetrisBlockEntityStateWithData(block)
+    --通过中间值mposTab缓动
+    MotionUpdateTetrisPosTab(block, deltaTime)
+    MotionUpdateTetrisRotate(block, deltaTime)
+    SyncTetrisBlockEntityStateWithData(block, block.localData.mposTab, block.localData.mrotateTab)
 end
 
-function GetTetrisBlockCenterPosTab(block)
+function MotionUpdateTetrisPosTab(block, deltaTime)
+    local posTab = block.posTab
+    local mposTab = block.localData.mposTab
+    -- if true then
+    --     block.localData.mposTab = posTab
+    --     return
+    -- end
+    if IsVectorTableEqual(posTab, mposTab) then
+        return
+    end
+    local speed = math.max(block.dropSpeed, 900)
+    -- local speed = 900
+    local moveDistance = speed * deltaTime
+    local distance = UMath:GetDistance(VectorFromTable(posTab), VectorFromTable(mposTab))
+    -- printEz("MotionUpdateTetrisPosTab xx", moveDistance, distance)
+    --移动距离超过两者间距
+    if moveDistance >= distance then
+        -- printEz("MotionUpdateTetrisPosTab no need motion")
+        block.localData.mposTab = NewVectorTableCopy(posTab)
+        return
+    end
+    -- local speed = 50
+    -- printEz("MotionUpdateTetrisPosTab", MiscService:Table2JsonStr(posTab), MiscService:Table2JsonStr(mposTab))
+    local diffTotal = VectorTableMinus(posTab, mposTab.x, mposTab.y, mposTab.z)
+    -- local diff = VectorTableScale(VectorToTable(UMath:GetNormalize(VectorFromTable(diffTotal))), speed * deltaTime)
+    local diff = VectorTableScale(diffTotal, moveDistance / distance)
+    mposTab = VectorTablePlus(mposTab, diff.x, diff.y, diff.z)
+    block.localData.mposTab = mposTab
+end
+
+function MotionUpdateTetrisRotate(block, deltaTime)
+    if true then
+        block.localData.mrotateTab = block.blockCfg.rotate
+        return
+    end
+    local rotateSpeed = 30
+    -- 0 -90 -180 -270
+    local mrot = block.localData.mrotateTab.x
+    local rot = block.blockCfg.rotate.x
+    local moveRot = rotateSpeed * deltaTime
+    local totalDiff = rot - mrot
+    if moveRot >= math.abs(totalDiff) then
+        block.localData.mrotateTab = NewVectorTableCopy(block.blockCfg.rotate)
+        return
+    end
+    -- local norm = UMath:GetNormalize(VectorFromTable(totalDiff))
+    -- mrot = VectorTablePlusTable(mrot, VectorTableScale(VectorToTable(norm), moveRot))
+    mrot = mrot - moveRot
+    block.localData.mrotateTab = NewVectorTable(mrot, block.blockCfg.rotate.y, block.blockCfg.rotate.z)
+end
+
+function GetTetrisBlockCenterPosTab(block, posTab)
     local rowNum = #block.blockParts
     local colNum = #block.blockParts[1]
-    return VectorTablePlus(block.posTab, colNum/2 * cfgTetris.blockSize, 0, rowNum/2 * cfgTetris.blockSize)
+    return VectorTablePlus(posTab, colNum/2 * cfgTetris.blockSize, 0, rowNum/2 * cfgTetris.blockSize)
 end
 
-function GetTetrisBlockEntityPosTab(block)
-    local blockCenterPosTab = GetTetrisBlockCenterPosTab(block)
+function GetTetrisBlockEntityPosTab(block, posTab)
+    local blockCenterPosTab = GetTetrisBlockCenterPosTab(block, posTab)
     return VectorTablePlus(blockCenterPosTab, -1 * block.blockCfg.entityDiffCol * cfgTetris.blockSize, 0, -1 * block.blockCfg.entityDiffRow * cfgTetris.blockSize)
     -- return blockCenterPosTab
 end
 
 --把方块数据同步到外观
-function SyncTetrisBlockEntityStateWithData(block)
-    Element:SetPosition(block.localData.awId, VectorFromTable(GetTetrisBlockEntityPosTab(block)), Element.COORDINATE.World)
-    Element:SetRotation(block.localData.awId, VectorFromTable(block.blockCfg.rotate), Element.COORDINATE.World)
+function SyncTetrisBlockEntityStateWithData(block, posTab, rotateTab)
+    Element:SetPosition(block.localData.awId, VectorFromTable(GetTetrisBlockEntityPosTab(block, posTab)), Element.COORDINATE.World)
+    Element:SetRotation(block.localData.awId, VectorFromTable(rotateTab), Element.COORDINATE.World)
 end
 
 function TestRotateBlock()
@@ -1058,7 +1115,7 @@ end
 
 function SolidifyTetrisBlockEntity(block, posTabSrc)
     block.posTab = NewVectorTable(GetTetrisBlockPosX(block, posTabSrc), posTabSrc.y, posTabSrc.z + (block.curRow -1) * cfgTetris.blockSize)
-    SyncTetrisBlockEntityStateWithData(block)
+    SyncTetrisBlockEntityStateWithData(block, block.posTab, block.blockCfg.rotate)
 end
 
 --固化方块停止移动,这是在每个客户端执行的

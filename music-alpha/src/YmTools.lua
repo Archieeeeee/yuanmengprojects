@@ -1217,6 +1217,30 @@ function VectorTablePlus(tab, x, y, z)
     return {x = (tab.x + x), y = (tab.y + y), z = (tab.z + z)}
 end
 
+function VectorTablePlusTable(tab, b)
+    return {x = (tab.x + b.x), y = (tab.y + b.y), z = (tab.z + b.z)}
+end
+
+function VectorTableMinus(tab, x, y, z)
+    return {x = (tab.x - x), y = (tab.y - y), z = (tab.z - z)}
+end
+
+function VectorTableMinusTable(tab, b)
+    return {x = (tab.x - b.x), y = (tab.y - b.y), z = (tab.z - b.z)}
+end
+
+function NewVectorTableCopy(tab)
+    return {x = tab.x, y = tab.y, z = tab.z}
+end
+
+function IsVectorTableEqual(tabA, tabB)
+    return tabA.x == tabB.x and tabA.y == tabB.y and tabA.z == tabB.z
+end
+
+function VectorTableScale(tab, num)
+    return {x = tab.x * num, y = tab.y * num, z = tab.z * num}
+end
+
 function Stringfy(value)
     return string.format("%s", value)
 end
