@@ -192,7 +192,7 @@ function GetTetrisControlBlock()
     for key, match in pairs(tetrisMatchsLocal) do
         for key, player in pairs(match.players) do
             for key, block in pairs(player.dropBlocks) do
-                if block.active and IsBlockPlayerSelf(block) then
+                if block.active and IsBlockPlayerSelf(block) and block.localData and block.localData.entityReady then
                     return block
                 end
             end
@@ -474,7 +474,8 @@ function SyncTetrisMatchDataUpdateBlock(action)
     print("SyncTetrisMatchDataUpdateBlockblockLocal")
     action.block.localData = blockLocal.localData
     --posTab永远用本地的,因为包含高度数据
-    action.block.posTab = blockLocal.posTab
+    --远端也需要同步
+    -- action.block.posTab = blockLocal.posTab
 
     --最后当作新的赋值
     SyncTetrisMatchDataNewBlock(action)
@@ -578,7 +579,9 @@ function AddPartEntityToTetrisBlock(block, partIdx, awId, bpos, row, col)
         if partIdx == 4 then
             -- PushActionToClients(true, "SyncMoveTetrisDropBlock", block)
             SyncMoveTetrisDropBlock(block)
-            block.localData.entityReady = true
+            TimerManager:AddFrame(1, function ()
+                block.localData.entityReady = true
+            end)
         end
     end
     -- CopyElementAndChildrenServerEzScale(elesInScene.cube, cfgCopyProps, callback, bpos, cfgElements.cube.size,
@@ -670,12 +673,16 @@ function UpdateTetrisDropBlock(deltaTime, obj)
     CheckTetrisBlockState(block, obj)
 end
 
+function CalcTetrisBlockCurRow(blockPosTab, board)
+    return (blockPosTab.z - board.boardPosTab.z) / cfgTetris.blockSize
+end
+
 ---todo
 function CheckTetrisBlockState(block, obj)
     -- print("CheckTetrisBlockState block ", MiscService:Table2JsonStr(block))
     local match = GetMatchLocalByBlock(block)
     local board = match.board
-    block.curRow = (block.posTab.z - board.boardPosTab.z) / cfgTetris.blockSize
+    block.curRow = CalcTetrisBlockCurRow(block.posTab, board)
     UI:SetText({102139}, MiscService:Table2JsonStr({block.curRow}))
     if block.curRow < -8 then
         block.active = false
@@ -745,6 +752,10 @@ function CheckTetrisBlockMerge(match, block, obj, isTest)
     end
     local mergeRow = (blockRow + 1)
     block.mergeRow = mergeRow
+    SolidifyTetrisBlockSimulateAll(block, mergeRow, blockColumn, match)
+end
+
+function SolidifyTetrisBlockSimulateAll(block, mergeRow, blockColumn, match)
     -- tetrisMatchsLocal[block.matchId].players[block.playerId].dropBlocks[block.id] = nil
     SolidifyTetrisBlockSimulate(block, mergeRow, blockColumn, match)
     --如果重叠进行合并, 合并到上一行的位置
@@ -1099,14 +1110,113 @@ function GetTetrisBlockColumnNotOverBoard(block, diffDesire, match)
     return col
 end
 
+function GetTetrisBlockColumnOnBoard(block, col)
+    return col + block.curColumn - 1
+end
+
+function GetTetrisBlockRowOnBoard(blockRow, row)
+    return row + blockRow - 1
+end
+
+--计算棋盘某一列某一行以下的最高行
+function GetTetrisBoardColumnHeight(board, col, maxRow)
+    if maxRow < 1 then
+        return 0
+    end
+    for row = maxRow, 1, -1 do
+        if board.parts[row][col].val ~= 0 then
+            return row
+        end
+    end
+    return 0
+end
+
+--计算方块最低下降到哪一行,采用不冲突算法
+function CalcTetrisBlockBottomRow(block, board, blockRow)
+    local blockParts = block.blockParts
+    local colNum = #blockParts[1]
+    local rowNum = #blockParts
+    blockRow = math.ceil(blockRow)
+    if blockRow <= 1 then
+        return 1
+    end
+    -- if blockRow < 1 then
+    --     printEz("CalcTetrisBlockBottomRow error", blockRow)
+    --     return 1
+    -- end
+    for row = 1, blockRow do
+        if not CheckTetrisBoardIsOverlap(row, block.curColumn, board, rowNum, colNum, blockParts) then
+            return row
+        end
+    end
+    printEz("CalcTetrisBlockBottomRow error final", blockRow, MiscService:Table2JsonStr(block))
+    return blockRow
+end
+
+-- --计算方块最低下降到哪一行,采用分析每一列最低行算法
+-- function CalcTetrisBlockBottomRow(block, board)
+--     local blockParts = block.blockParts
+--     local botRow = 1 - #blockParts
+--     local curRow = CalcTetrisBlockCurRow(block, board)
+--     curRow = math.ceil(curRow)
+--     for col = 1, #blockParts[1] do
+--         --当前列的最低有效值的行
+--         local botRowCurCol = nil
+--         for row = 1, #blockParts do
+--             if botRowCurCol == nil and blockParts[row][col] ~=0 then
+--                 botRowCurCol = row
+--             end
+--         end
+--         if botRowCurCol ~= nil then
+--             local boardCol = GetTetrisBlockColumnOnBoard(block, col)
+--             if boardCol <= board.colNum then
+--                 local colHeight = GetTetrisBoardColumnHeight(board, boardCol, GetTetrisBlockRowOnBoard(botRowCurCol, curRow))
+--                 botRowCurCol = colHeight + 2 - botRowCurCol
+--                 botRow = math.max(botRow, botRowCurCol)
+--             end
+--         end
+--     end
+--     print("CalcTetrisBlockBottomRow", botRow, MiscService:Table2JsonStr(block))
+--     return botRow
+-- end
+
+function ControlTetrisBlockToBottom(block, match, botRow)
+    block.curRow = botRow
+    block.mergeRow = block.curRow
+    SolidifyTetrisBlockSimulateAll(block, block.curRow, block.curColumn, match)
+end
+
 --玩家控制方块
-function ControlActionTetrisBlockLocal(isRotate, isMoveLeft, isMoveDown)
+function ControlActionTetrisBlockLocal(isRotate, isMoveLeft, isMoveDown, isFastMoveDown)
     local block = GetTetrisControlBlock()
     local res = {success=false, block=nil}
     if block == nil then
         return res
     end
     local match = GetMatchLocalByBlock(block)
+    --移动到底
+    if isFastMoveDown then
+        local curRow = CalcTetrisBlockCurRow(block.posTab, match.board)
+        local botRow = CalcTetrisBlockBottomRow(block, match.board, curRow)
+        ControlTetrisBlockToBottom(block, match, botRow)
+        return res
+    end
+    --下移
+    if isMoveDown then
+        local curRow = CalcTetrisBlockCurRow(block.posTab, match.board)
+        local botRow = CalcTetrisBlockBottomRow(block, match.board, curRow)
+        local posTab = VectorTablePlus(block.posTab, 0, 0, -cfgTetris.blockSize)
+        local curRowAfterDown = CalcTetrisBlockCurRow(posTab, match.board)
+        if curRowAfterDown <= botRow then
+            ControlTetrisBlockToBottom(block, match, botRow)
+            return res
+        else
+            res.success = true
+            block.posTab = posTab
+            SendSyncTetrisMatchDataToPlayers("SyncTetrisMatchDataUpdateBlock", match, block, true)
+            return res
+        end
+    end
     local testBlock = CopyTableByJson(block)
     if isRotate then
         SetTetrisBlockCfg(testBlock, testBlock.blockCfg.type, testBlock.blockCfg.nextMorph)
@@ -1129,6 +1239,7 @@ function ControlActionTetrisBlockLocal(isRotate, isMoveLeft, isMoveDown)
             return res
         end
     end
+    
     res.success = true
     block.blockParts = testBlock.blockParts
     block.blockCfg = testBlock.blockCfg
@@ -1878,12 +1989,16 @@ end
 function ButtonPressed(item)
     print("ButtonPressed ", item)
     if item == 102778 then
-        ControlActionTetrisBlockLocal(true, nil, nil)
+        ControlActionTetrisBlockLocal(true, nil, nil, nil)
     elseif item == 103375 then
-        ControlActionTetrisBlockLocal(nil, false, nil)
+        ControlActionTetrisBlockLocal(nil, false, nil, nil)
     elseif item == 103376 then
-        ControlActionTetrisBlockLocal(nil, true, nil)
+        ControlActionTetrisBlockLocal(nil, true, nil, nil)
     elseif item == 104477 then
+        ControlActionTetrisBlockLocal(nil, nil, true, nil)
+    elseif item == 104480 then
+        ControlActionTetrisBlockLocal(nil, nil, nil, true)
         -- TestRotateBlock()      
     end
+    
 end
