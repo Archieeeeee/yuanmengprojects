@@ -14,7 +14,8 @@ local cfgDataNames = {"ymAnimes"}
 local haohaoyaId = 327
 animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
 ymAnimes = {}
-local elesInScene = {airwall=331, cube=381, brick=334, frameBoard=531, cubeGlass=541}
+local elesInScene = {airwall=331, cube=381, brick=334, frameBoard=531, cubeGlass=541, cubeBlackWhite=570, boxFramed=561,
+     woodBox=560, buyi=559, floorBox=562, dianban=581, boxElec=563, cubeBlackWhiteW=548, towerCeil=608, cyberBox=556}
 -- local tetrisBoard = {parts={}, columnHeights={}}
 cfgTetrisBlock_1_1 = {parts={{1,1,0,0}, {0,1,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=1, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
 cfgTetrisBlock_2_1 = {parts={{0,1,1,0}, {1,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=2, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
@@ -98,6 +99,12 @@ function GameInitVars()
     cfgElements.airWall = {id=1105000000000074, size=Engine.Vector(5,5,3)}
     cfgElements.cube = {id=1101002001034000, size=Engine.Vector(1,1,1)}
     cfgElements.cubeNight = {id=1101002001105000, size=Engine.Vector(1,1,1)}
+    cfgElements.woodBox = {id=1108006001001028, size=Engine.Vector(1.17,1.17,1.17)}
+    cfgElements.floorBox = {id=1102015001001063, size=Engine.Vector(4,4,4)}
+    cfgElements.dianban = {id=1108006001001155, size=Engine.Vector(1.53,1.53,0.03)}
+    cfgElements.boxElec = {id=1108006001001185, size=Engine.Vector(1.77, 1.77, 1.77)}
+    cfgElements.towerCeil = {id=1102015001003956, size=Engine.Vector(0.5, 0.5, 0.47)}
+    cfgElements.cyberBox = {id=1101002001002002, size=Engine.Vector(3, 3, 3)}
 
     posOrg = Element:GetPosition(platformId)
     LoadGlobalVarsFromData(cfgDataNames)
@@ -649,9 +656,9 @@ function AddPartEntityToTetrisBlock(block, partIdx, awId, bpos, row, col)
     end
     -- CopyElementAndChildrenServerEzScale(elesInScene.cube, cfgCopyProps, callback, bpos, cfgElements.cube.size,
     --     cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize, nil)
-    CopyElementAndChildrenFull(elesInScene.cube, cfgCopyProps, callback, false,
+    CopyElementAndChildrenFull(elesInScene.cyberBox, cfgCopyProps, callback, false,
         bpos, false, nil,
-        cfgElements.cube.size, cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize, nil)        
+        cfgElements.cyberBox.size, cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize, nil)        
 end
 
 ---开始下落
@@ -771,6 +778,23 @@ end
 function SyncTetrisBlockEntityStateWithData(block, posTab, rotateTab)
     Element:SetPosition(block.localData.awId, VectorFromTable(GetTetrisBlockEntityPosTab(block, posTab)), Element.COORDINATE.World)
     Element:SetRotation(block.localData.awId, VectorFromTable(rotateTab), Element.COORDINATE.World)
+end
+
+function SetTetrisCameraWatchBoard(match)
+    -- Setting:SwitchToVerticalScreen(true)
+    Camera:SetOrthographic(true)
+    Camera:SetOrthographicWidth(4000)
+    local board = match.board
+    local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * board.colNum / 2, 2000, cfgTetris.blockSize * board.rowNum / 2)
+    Camera:SetPosition(VectorFromTable(posTab))
+    Camera:SetCameraFOV(100)
+    -- Camera:SetProperty(Camera.PROPERTY.MinPitch, 0)
+    -- Camera:SetProperty(Camera.PROPERTY.MaxPitch, 0)
+    Camera:SetProperty(Camera.PROPERTY.ArmLength, 1000)
+    Camera:LockPitch(0)
+    Camera:LockYaw(-90)
+
+    
 end
 
 function TestRotateBlock()
@@ -1409,21 +1433,44 @@ function NewTetrisMatchData(action)
     local board = {parts={}, columnHeights={}, matchId=match.id, boardPosTab=match.boardPosTab}
     InitTetrisBoard(board, cfgTetris.board.rowNum, cfgTetris.board.colNum)
     match.board = board
-    SendSyncTetrisMatchDataToPlayers("SyncTetrisMatchDataNewMatch", match, nil, false)
-    local newAction = NewTetrisAction(match, nil, nil, "InitTetrisBoardEntity")
-    print("SendTetrisActionToMatchPlayers newAction ", newAction.funcName)
-    SendTetrisActionToMatchPlayers(newAction)
+    -- SendSyncTetrisMatchDataToPlayers("SyncTetrisMatchDataNewMatch", match, nil, false)
+    -- local newAction = NewTetrisAction(match, nil, nil, "InitTetrisBoardEntity")
+    -- print("SendTetrisActionToMatchPlayers newAction ", newAction.funcName)
+    -- SendTetrisActionToMatchPlayers(newAction)
+    SendTetrisActionToMatchPlayers(NewTetrisAction(match, nil, nil, "StartTetrisMatchClient"))
+end
+
+function StartTetrisMatchClient(action)
+    SyncTetrisMatchDataNewMatch(action)
+    InitTetrisBoardEntity(action)
+    SetTetrisCameraWatchBoard(action.match)
 end
 
 function InitTetrisBoardEntity(action)
-    local callback = function ()
-    end
-    local posTab = VectorTablePlus(action.match.board.boardPosTab, cfgTetris.blockSize * cfgTetris.board.colNum / 2, -20, 0)
+    local board = action.match.board
+    
+    local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * cfgTetris.board.colNum / 2, 0, 0)
     -- CopyElementAndChildrenServerEzScale(elesInScene.frameBoard, cfgCopyProps, callback, VectorFromTable(posTab),
     -- cfgElements.cube.size, cfgTetris.blockSize * cfgTetris.board.colNum, cfgTetris.blockSize, cfgTetris.blockSize * cfgTetris.board.rowNum, nil)
-    CopyElementAndChildrenFull(elesInScene.cubeGlass, cfgCopyProps, callback, false,
+    local sizeTab = NewVectorTable(cfgTetris.blockSize * cfgTetris.board.colNum, cfgTetris.blockSize, cfgTetris.blockSize * cfgTetris.board.rowNum)
+    -- posTab = VectorTablePlus(posTab, 0, -20, 0)
+    -- sizeTab = VectorTablePlus(sizeTab, 10, 0, 0)
+
+    -- posTab = VectorTablePlus(posTab, 0, 0, -170)
+    -- sizeTab = VectorTablePlus(sizeTab, 0, 0, 0)
+
+    posTab = VectorTablePlus(posTab, 0, -20, -0)
+    sizeTab = VectorTablePlus(sizeTab, 10, 0, 10)
+
+    local callback = function (eid)
+        -- local spline = Element:AddSpline(VectorFromTable(board.boardPosTab), Engine.Vector(0, 0, 0), Engine.Vector(1,1,1), eid)
+        -- Element:UpdateSplinePoints(spline, {VectorFromTable(board.boardPosTab), VectorFromTable(VectorTablePlus(posTab, 900, 0, -0))})
+    end
+    CopyElementAndChildrenFull(elesInScene.cubeBlackWhiteW, cfgCopyProps, callback, false,
         VectorFromTable(posTab), false, nil,
-        cfgElements.cube.size, cfgTetris.blockSize * cfgTetris.board.colNum + 10, cfgTetris.blockSize, cfgTetris.blockSize * cfgTetris.board.rowNum, nil)
+        cfgElements.cube.size, sizeTab.x, sizeTab.y, sizeTab.z, nil)
+
+
 end
 
 function SendTetrisActionToMatchPlayers(action)
