@@ -239,41 +239,65 @@ function GenSingleTetrisDropBlock(match, player)
     SendTetrisActionToMatchPlayers(action)
 end
 
+--查找长宽用于旋转
+function InitTetrisBlockCfg(blockCfg)
+    local rowLen = 0
+    local colLen = 0
+    for row = 1, #blockCfg.parts, 1 do
+        for col = 1, #blockCfg.parts[1], 1 do
+            if blockCfg.parts[row][col] ~= 0 then
+                rowLen = math.max(rowLen, row)
+                colLen = math.max(colLen, col)
+            end
+        end
+    end
+    blockCfg.cfg.rowLen = rowLen
+    blockCfg.cfg.colLen = colLen
+end
+
 function InitTetrisData()
     --生成配置变量
     for type = 1, 7, 1 do
-        local varName = GetTetrisBlockCfgVarName(type, 1)
-        GenTetrisBlockCfgByRotateMulti(_G[varName], 3)
+        local blockCfg = GetTetrisBlockCfg(type, 1)
+        InitTetrisBlockCfg(blockCfg)
+        GenTetrisBlockCfgByRotateMulti(blockCfg, 3)
+        -- GenTetrisBlockCfgByRotateMulti(blockCfg, 1)
     end
     --初始化方块配置
     for type = 1, 7 do
         for morph = 1, 4 do
             local cfgBlock = GetTetrisBlockCfg(type, morph)
             if cfgBlock ~= nil then
-                InitTetrisBlockCfgEntityDiff(cfgBlock)
+                -- InitTetrisBlockCfgEntityDiff(cfgBlock)
                 InitTetrisBlockCfgCol(cfgBlock)
             end
         end
     end
 end
 
+--旋转可接受1或3
 function GenTetrisBlockCfgByRotateMulti(blockCfg, num)
     for i = 1, num, 1 do
         blockCfg = GenTetrisBlockCfgByRotate(blockCfg)
     end
+    --将最后一个的下一个置为1
+    blockCfg.cfg.nextMorph = 1
 end
+
 
 --获取方块组件对应的本地实体化信息,逆时针反推
 function GetTetrisBlockPartLocalData(block, partRow, partCol)
-    local colNum = #block.blockParts[1]
     local row = partRow + block.blockCfg.entityDiffRow
     local col = partCol + block.blockCfg.entityDiffCol
     local calcRow = row
     local calcCol = col
     if block.blockCfg.morph ~= 1 then
         for i = block.blockCfg.morph, 2, -1 do
+            local blockCfgPrevious = GetTetrisBlockCfg(block.blockCfg.type, i - 1)
+            local colNum = blockCfgPrevious.cfg.colLen
             col = colNum + 1 - calcRow
             row = calcCol
+            -- printEz("GetTetrisBlockPartLocalData morph", i, colNum, calcRow, calcCol, row, col)
             calcCol = col
             calcRow = row
         end
@@ -292,12 +316,49 @@ function GetTetrisBlockPartLocalData(block, partRow, partCol)
     return res
 end
 
+--获取方块组件对应的本地实体化信息,逆时针反推
+-- function GetTetrisBlockPartLocalData(block, partRow, partCol)
+--     local colNum = #block.blockParts[1]
+--     local row = partRow + block.blockCfg.entityDiffRow
+--     local col = partCol + block.blockCfg.entityDiffCol
+--     local calcRow = row
+--     local calcCol = col
+--     if block.blockCfg.morph ~= 1 then
+--         for i = block.blockCfg.morph, 2, -1 do
+--             col = colNum + 1 - calcRow
+--             row = calcCol
+--             calcCol = col
+--             calcRow = row
+--         end
+--     end
+--     -- local rowData = block.localData.parts[Stringfy(row + block.blockCfg.entityDiffRow)]
+--     -- if rowData == nil then
+--     --     return nil
+--     -- end
+--     -- return rowData[Stringfy(col + block.blockCfg.entityDiffCol)]
+--     printEz("GetTetrisBlockPartLocalData", partRow, partCol, row, col)
+--     local res = block.localData.parts[Stringfy(row)][Stringfy(col)]
+--     if not res then
+--         print("error GetTetrisBlockPartLocalData ")
+--     end
+--     print("GetTetrisBlockPartLocalData res ", MiscService:Table2JsonStr(res))
+--     return res
+-- end
+
 --以方块的中心顺时针旋转90度
 function GenTetrisBlockCfgByRotate(blockCfg)
     local parts = blockCfg.parts
     local copyCfg = CopyTableByJson(blockCfg)
-    local rowNum = #parts
-    local colNum = #parts[1]
+    copyCfg.cfg.rowLen = blockCfg.cfg.colLen
+    copyCfg.cfg.colLen = blockCfg.cfg.rowLen
+    local rowNum = blockCfg.cfg.rowLen
+    local colNum = blockCfg.cfg.colLen
+    --填充0
+    for row = 1, #parts do
+        for col = 1, #parts[1] do
+            copyCfg.parts[row][col] = 0
+        end
+    end
     for row = 1, rowNum do
         for col = 1, colNum do
             copyCfg.parts[colNum - col + 1][row] = parts[row][col]
@@ -560,7 +621,6 @@ function InitTetrisBlockEntity(block, match)
         for rowIdx, row in ipairs(block.blockParts) do
             for colIdx, val in ipairs(row) do
                 if val ~= 0 then
-                    --从中心点开始
                     partIdx = partIdx + 1
                     local bpos = VectorTablePlus(block.posTab, (colIdx - 0.5)* cfgTetris.blockSize, 0, (rowIdx - 1) * cfgTetris.blockSize)
                     AddPartEntityToTetrisBlock(block, partIdx, awId, VectorFromTable(bpos), rowIdx, colIdx)
@@ -630,14 +690,14 @@ end
 function MotionUpdateTetrisPosTab(block, deltaTime)
     local posTab = block.posTab
     local mposTab = block.localData.mposTab
+    if IsVectorTableEqual(posTab, mposTab) then
+        return
+    end
     -- if true then
     --     block.localData.mposTab = posTab
     --     return
     -- end
-    if IsVectorTableEqual(posTab, mposTab) then
-        return
-    end
-    local speed = math.max(block.dropSpeed, 900)
+    local speed = math.max(block.dropSpeed, 1000)
     -- local speed = 900
     local moveDistance = speed * deltaTime
     local distance = UMath:GetDistance(VectorFromTable(posTab), VectorFromTable(mposTab))
@@ -658,29 +718,46 @@ function MotionUpdateTetrisPosTab(block, deltaTime)
 end
 
 function MotionUpdateTetrisRotate(block, deltaTime)
-    if true then
-        block.localData.mrotateTab = block.blockCfg.rotate
-        return
-    end
-    local rotateSpeed = 30
     -- 0 -90 -180 -270
     local mrot = block.localData.mrotateTab.x
     local rot = block.blockCfg.rotate.x
-    local moveRot = rotateSpeed * deltaTime
     local totalDiff = rot - mrot
+    if mrot == rot or (math.abs(totalDiff) % 360) == 0 then
+        return
+    end
+    -- if true then
+    --     block.localData.mrotateTab = block.blockCfg.rotate
+    --     return
+    -- end
+    local rotateSpeed = 540
+    local moveRot = rotateSpeed * deltaTime
     if moveRot >= math.abs(totalDiff) then
         block.localData.mrotateTab = NewVectorTableCopy(block.blockCfg.rotate)
+        if block.localData.mrotateTab.x == -270 then
+            printEz("MotionUpdateTetrisRotate reset")
+            block.localData.mrotateTab.x = 90
+        end
         return
     end
     -- local norm = UMath:GetNormalize(VectorFromTable(totalDiff))
     -- mrot = VectorTablePlusTable(mrot, VectorTableScale(VectorToTable(norm), moveRot))
-    mrot = mrot - moveRot
+    local multi = 1
+    if totalDiff < 0 then
+        multi = -1
+    end
+    mrot = mrot + (moveRot * multi)
     block.localData.mrotateTab = NewVectorTable(mrot, block.blockCfg.rotate.y, block.blockCfg.rotate.z)
 end
 
+-- function GetTetrisBlockCenterPosTabOld(block, posTab)
+--     local rowNum = #block.blockParts
+--     local colNum = #block.blockParts[1]
+--     return VectorTablePlus(posTab, colNum/2 * cfgTetris.blockSize, 0, rowNum/2 * cfgTetris.blockSize)
+-- end
+
 function GetTetrisBlockCenterPosTab(block, posTab)
-    local rowNum = #block.blockParts
-    local colNum = #block.blockParts[1]
+    local rowNum = block.blockCfg.rowLen
+    local colNum = block.blockCfg.colLen
     return VectorTablePlus(posTab, colNum/2 * cfgTetris.blockSize, 0, rowNum/2 * cfgTetris.blockSize)
 end
 
