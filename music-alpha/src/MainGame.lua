@@ -625,7 +625,7 @@ end
 ---方块实体化,包括本体实体和预览实体
 function InitTetrisBlockEntity(block, match)
     --如果使用空气墙,位置需要偏移
-    local res = {itself = {partNum=0, usingAirwall=false, partEid=elesInScene.floorBox, orgSize = cfgElements.floorBox.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)},
+    local res = {itself = {partNum=0, usingAirwall=false, partEid=elesInScene.woodBoxB, orgSize = cfgElements.woodBoxB.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)},
                 preview = {partNum=0, usingAirwall=true, partEid=elesInScene.dianban, orgSize = cfgElements.airWall.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)},
                 partTotal = 0}
     if IsBlockPlayerSelf(block) then
@@ -855,6 +855,7 @@ function SetTetrisCameraWatchBoard(match)
     Camera:SetOrthographicWidth(4000)
     local board = match.board
     local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * board.colNum / 2, 2000, cfgTetris.blockSize * board.rowNum / 2)
+    -- local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * board.colNum / 2, 2000, cfgTetris.blockSize * board.rowNum)
     Camera:SetPosition(VectorFromTable(posTab))
     Camera:SetCameraFOV(100)
     -- Camera:SetProperty(Camera.PROPERTY.MinPitch, 0)
@@ -863,7 +864,11 @@ function SetTetrisCameraWatchBoard(match)
     Camera:LockPitch(0)
     Camera:LockYaw(-90)
 
-    
+    -- SkyBox:SetDirectionalLightIntensity(0)
+    -- SkyBox:SetSkylightIntensityScale(1)
+    -- SkyBox:SetDirectionalLightPitch(0)
+    -- SkyBox:SetDirectionalLightYaw(-90)
+    -- SkyBox:SetSkyBoxRotation(90)
 end
 
 function TestRotateBlock()
