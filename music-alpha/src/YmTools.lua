@@ -1335,10 +1335,14 @@ end
 
 --深度拷贝
 function CopyTableShallow(obj)
-    return CopyTableWithoutKeyHandle({}, obj)
+    return CopyTableWithoutKeyHandle({}, obj, nil)
 end
 
-function CopyTableWithoutKeyHandle(param, obj)
+function CopyTableShallowWithoutKey(obj, excludeKey)
+    return CopyTableWithoutKeyHandle({}, obj, excludeKey)
+end
+
+function CopyTableWithoutKeyHandle(param, obj, excludeKey)
     if type(obj) ~= "table" then
         return obj
     end
@@ -1348,7 +1352,9 @@ function CopyTableWithoutKeyHandle(param, obj)
     end
     local res = {}
     for key, value in pairs(obj) do
-        res[CopyTableWithoutKeyHandle(param, key)] = CopyTableWithoutKeyHandle(param, value)
+        if key ~= excludeKey then
+            res[CopyTableWithoutKeyHandle(param, key)] = CopyTableWithoutKeyHandle(param, value)
+        end
     end
     param[obj] = res
     return res
