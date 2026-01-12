@@ -9,7 +9,7 @@ local typeObjs = {boss = 1000, blockUnknown=101, brick=103, tetrisBlock=2001}
 local cfgAirWallId = 1105000000000074
 local cfgElements = {}
 local protos = {}
-local cfgCopyProps = {"debris"}
+local cfgCopyProps = {"debris", "isPart", "brow", "bcol"}
 local cfgDataNames = {"ymAnimes"}
 local haohaoyaId = 327
 animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
@@ -18,15 +18,16 @@ local elesInScene = {airwall=331, cube=381, brick=334, frameBoard=531, cubeGlass
      woodBox=560, buyi=559, floorBox=562, dianban=630, boxElec=563, cubeBlackWhiteW=548, towerCeil=608, cyberBox=556,
      woodBoxB=618, cheese=613}
 -- local tetrisBoard = {parts={}, columnHeights={}}
-cfgTetrisBlock_1_1 = {parts={{1,1,0,0}, {0,1,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=1, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
-cfgTetrisBlock_2_1 = {parts={{0,1,1,0}, {1,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=2, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
-cfgTetrisBlock_3_1 = {parts={{1,1,1,0}, {0,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=3, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
-cfgTetrisBlock_4_1 = {parts={{1,1,1,1}, {0,0,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=4, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
-cfgTetrisBlock_5_1 = {parts={{1,1,0,0}, {1,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=5, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
-cfgTetrisBlock_6_1 = {parts={{1,1,1,0}, {1,0,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=6, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
-cfgTetrisBlock_7_1 = {parts={{1,1,1,0}, {0,0,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=7, morph=1, nextMorph=2, entityDiffRow=0, entityDiffCol=0, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_1_1 = {parts={{1,1,0,0}, {0,1,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=1, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_2_1 = {parts={{0,1,1,0}, {1,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=2, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_3_1 = {parts={{1,1,1,0}, {0,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=3, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_4_1 = {parts={{1,1,1,1}, {0,0,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=4, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_5_1 = {parts={{1,1,0,0}, {1,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=5, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_6_1 = {parts={{1,1,1,0}, {1,0,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=6, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
+cfgTetrisBlock_7_1 = {parts={{1,1,1,0}, {0,0,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=7, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
 -- cfgTetrisBlock_1_2 = {parts={{0,0,0,0}, {0,1,0,0}, {1,1,0,0}, {1,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, entityDiffRow=1, entityDiffCol=0, rotate={x=90, y=0, z=90}}}
-local cfgTetris = {blockSize=100, dropSpeed=100, board={rowNum=20, colNum=10, posX=150, posY=1850, posZ=400}, matchIdStart=0}
+local cfgTetris = {blockSize=100, dropSpeed=100, board={rowNum=20, colNum=10, posTab={x=150, y=1850, z=400}}, matchIdStart=0,
+    skins={default="default"}}
 -- local tetrisPlayerData = {dropSpeed=100, dropBlocks={}, boardPosTab=nil}
 local players = {}
 --服务端只负责记录
@@ -36,6 +37,7 @@ local tetrisMatchs = {}
 --从远端同步的数据和自身数据,并不是对局数据集
 local tetrisMatchsLocal = {}
 local varPool = {mergeActions={}}
+local tetrisDataLocal = {blockProtos={itself={}, preview={}}}
 
 
 function CallbackCharCreated(playerId)
@@ -284,6 +286,18 @@ function InitTetrisData()
             end
         end
     end
+    --生成方块原型
+    PrepareTetrisBlockProtos(cfgTetris.skins.default)
+end
+
+function PrepareTetrisBlockProtos(skin)
+    for type = 1, 7, 1 do
+        local cfgBlock = GetTetrisBlockCfg(type, 1)
+        local posTab = VectorTablePlus(cfgTetris.board.posTab, type * 5 * cfgTetris.blockSize, -500, 0)
+        printEz("PrepareTetrisBlockProtos", type, MiscService:Table2JsonStr(cfgTetris.board.posTab))
+        printEz("PrepareTetrisBlockProtos vvv", type, MiscService:Table2JsonStr(posTab))
+        InitTetrisBlockEntityProto(cfgBlock, skin, posTab)
+    end
 end
 
 --旋转可接受1或3
@@ -298,8 +312,10 @@ end
 
 --获取方块组件对应的本地实体化信息,逆时针反推
 function GetTetrisBlockPartLocalData(block, partRow, partCol)
-    local row = partRow + block.blockCfg.entityDiffRow
-    local col = partCol + block.blockCfg.entityDiffCol
+    -- local row = partRow + block.blockCfg.entityDiffRow
+    -- local col = partCol + block.blockCfg.entityDiffCol
+    local row = partRow
+    local col = partCol
     local calcRow = row
     local calcCol = col
     if block.blockCfg.morph ~= 1 then
@@ -391,40 +407,40 @@ function GenTetrisBlockCfgByRotate(blockCfg)
     return copyCfg
 end
 
---去除底部空白行和左边空白列,并记录位移数据
-function InitTetrisBlockCfgEntityDiff(cfgBlock)
-    if cfgBlock.cfg.morph == 1 then
-        return
-    end
-    local rowNum = #cfgBlock.parts
-    local colNum = #cfgBlock.parts[1]
-    local minRow = rowNum
-    local minCol = colNum
-    for row = 1, rowNum do
-        for col = 1, colNum do
-            if cfgBlock.parts[row][col] ~= 0 then
-                minRow = math.min(row, minRow)
-                minCol = math.min(col, minCol)
-            end
-        end
-    end
-    minRow = (minRow - 1)
-    minCol = (minCol - 1)
-    cfgBlock.cfg.entityDiffRow = minRow
-    cfgBlock.cfg.entityDiffCol = minCol
-    --重新赋值
-    local copyBlock = CopyTableByJson(cfgBlock)
-    for row = 1, rowNum do
-        for col = 1, colNum do
-            if row + minRow <= rowNum and col + minCol <= colNum then
-                cfgBlock.parts[row][col] = copyBlock.parts[row + minRow][col + minCol]
-            else
-                cfgBlock.parts[row][col] = 0
-            end
-        end
-    end
-    print("InitTetrisBlockCfgEntityDiff ", MiscService:Table2JsonStr(cfgBlock))
-end
+-- --去除底部空白行和左边空白列,并记录位移数据
+-- function InitTetrisBlockCfgEntityDiff(cfgBlock)
+--     if cfgBlock.cfg.morph == 1 then
+--         return
+--     end
+--     local rowNum = #cfgBlock.parts
+--     local colNum = #cfgBlock.parts[1]
+--     local minRow = rowNum
+--     local minCol = colNum
+--     for row = 1, rowNum do
+--         for col = 1, colNum do
+--             if cfgBlock.parts[row][col] ~= 0 then
+--                 minRow = math.min(row, minRow)
+--                 minCol = math.min(col, minCol)
+--             end
+--         end
+--     end
+--     minRow = (minRow - 1)
+--     minCol = (minCol - 1)
+--     cfgBlock.cfg.entityDiffRow = minRow
+--     cfgBlock.cfg.entityDiffCol = minCol
+--     --重新赋值
+--     local copyBlock = CopyTableByJson(cfgBlock)
+--     for row = 1, rowNum do
+--         for col = 1, colNum do
+--             if row + minRow <= rowNum and col + minCol <= colNum then
+--                 cfgBlock.parts[row][col] = copyBlock.parts[row + minRow][col + minCol]
+--             else
+--                 cfgBlock.parts[row][col] = 0
+--             end
+--         end
+--     end
+--     print("InitTetrisBlockCfgEntityDiff ", MiscService:Table2JsonStr(cfgBlock))
+-- end
 
 function InitTetrisBlockCfgCol(cfgBlock)
     --找出最左和最右端
@@ -621,13 +637,9 @@ function GetTetrisBlockPosTab(board, blockRow, blockCol)
     return VectorTablePlus(board.boardPosTab, (blockCol - 1) * cfgTetris.blockSize, 0, (blockRow - 1) * cfgTetris.blockSize)
 end
 
-
 ---方块实体化,包括本体实体和预览实体
 function InitTetrisBlockEntity(block, match)
-    --如果使用空气墙,位置需要偏移
-    local res = {itself = {partNum=0, usingAirwall=false, partEid=elesInScene.woodBoxB, orgSize = cfgElements.woodBoxB.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)},
-                preview = {partNum=0, usingAirwall=true, partEid=elesInScene.dianban, orgSize = cfgElements.airWall.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)},
-                partTotal = 0}
+    local res = {blockTotalNum=0, doneNum=0, postDone=false}
     if IsBlockPlayerSelf(block) then
         InitTetrisBlockEntitySingle(block, match, true, res)
     end
@@ -635,39 +647,105 @@ function InitTetrisBlockEntity(block, match)
 end
 
 function InitTetrisBlockEntitySingle(block, match, isPreview, res)
-    print("InitTetrisBlockEntitystart ", block.objId)
     --用于检测实体完成
-    res.partTotal = res.partTotal + 4
-    local param = nil
+    res.blockTotalNum = res.blockTotalNum + 1
+    local data = tetrisDataLocal.blockProtos.itself
     if isPreview then
-        param = res.preview
-    else
-        param = res.itself
+        data = tetrisDataLocal.blockProtos.preview
     end
+    local skin = cfgTetris.skins.default
+    local peid = data[skin][Stringfy(block.blockCfg.type)].eid
     local posTab = block.posTab
     if isPreview then
         posTab = CalcTetrisBlockPreviewPos(block, match.board)
     end
     local blockCenterPosTab = GetTetrisBlockCenterPosTab(block, posTab)
-    -- local posSrc = posOrg + Engine.Vector(-300, 0, 1300)
-    --原点创建父节点
+    -- printEz("InitTetrisBlockEntitySingle aaa")
     local awCallback = function (awId)
+        res.doneNum = res.doneNum + 1
         if not isPreview then
             block.localData.awId = awId
-            local obj = AddNewObj(0, typeObjs.tetrisBlock, block.objId, 0.01, UpdateTetrisDropBlock, 9999, CommonDestroy)
-            obj.block = block
         else
             block.localData.preAwId = awId
         end
+        UpdateTetrisBlockLocalDataParts(block, awId, isPreview)
+        if not res.postDone and res.doneNum == res.blockTotalNum then
+            -- printEz("InitTetrisBlockEntitySingle AddNewObjADAD aaa", isPreview)
+            res.postDone = true
+            -- printEz("InitTetrisBlockEntitySingle AddNewObjADAD")
+            local obj = AddNewObj(0, typeObjs.tetrisBlock, block.objId, 0.01, UpdateTetrisDropBlock, 9999, CommonDestroy)
+            obj.block = block
+            SyncMoveTetrisDropBlock(block)
+            TimerManager:AddFrame(1, function ()
+                block.localData.entityReady = true
+            end)
+        end
+    end
+    CopyElementAndChildrenFull(peid, cfgCopyProps, awCallback, false,
+        VectorFromTable(blockCenterPosTab), false, nil,
+        nil, nil, nil, nil, nil)
+end
+
+function UpdateTetrisBlockLocalDataParts(block, awId, isPreview)
+    local eids = Element:GetChildElementsFromElement(awId)
+    -- printEz("UpdateTetrisBlockLocalDataParts aaa", awId)
+
+    if eids then
+        for index, cid in ipairs(eids) do
+            if CheckCustomPropBoolHas(cid, "isPart") then
+                local row = GetCustomPropNumber(cid, "brow")
+                local col = GetCustomPropNumber(cid, "bcol")
+                -- printEz("UpdateTetrisBlockLocalDataParts ", isPreview)
+                if isPreview then
+                    EnsureTableValue(block.localData.preParts, Stringfy(row), Stringfy(col)).eid = cid
+                else
+                    EnsureTableValue(block.localData.parts, Stringfy(row), Stringfy(col)).eid = cid
+                end
+            end
+        end
+    end
+end
+
+
+---方块实体化,包括本体实体和预览实体
+function InitTetrisBlockEntityProto(blockCfg, skin, posTab)
+    --如果使用空气墙,位置需要偏移
+    local cfgItself = {isProto=true, posTab = posTab, skin = skin, isPreview=false, partNum=0, usingAirwall=false, partEid=elesInScene.woodBoxB, orgSize = cfgElements.woodBoxB.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)}
+    local cfgPreview = {isProto=true, posTab = posTab, skin = skin, isPreview=true, partNum=0, usingAirwall=true, partEid=elesInScene.dianban, orgSize = cfgElements.airWall.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)}
+    CreateTetrisBlockEntitySingle(blockCfg, cfgItself)
+    CreateTetrisBlockEntitySingle(blockCfg, cfgPreview)
+end
+
+function CreateTetrisBlockEntitySingle(blockCfg, cfg)
+    --用于检测实体完成
+    local posTab = cfg.posTab
+    local blockCenterPosTab = GetTetrisBlockCenterPosTabFull(blockCfg, posTab)
+    print("InitTetrisBlockEntityProtoSingle  xxx", blockCfg.cfg.type, MiscService:Table2JsonStr(blockCenterPosTab))
+    
+    --原点创建父节点
+    local awCallback = function (awId)
+        if cfg.isProto then
+            local data = tetrisDataLocal.blockProtos.itself
+            if cfg.isPreview then
+                data = tetrisDataLocal.blockProtos.preview
+            end
+            local skinData = EnsureTableValue(data, cfg.skin, Stringfy(blockCfg.cfg.type))
+            skinData.eid = awId
+        end
+
+        if cfg.callbackFunc then
+            cfg.callbackFunc(awId)
+        end
+        
         --棋盘行高加2
-        for rowIdx, row in ipairs(block.blockParts) do
+        for rowIdx, row in ipairs(blockCfg.parts) do
             for colIdx, val in ipairs(row) do
                 if val ~= 0 then
-                    local bpos = VectorTablePlus(posTab, (colIdx - 0.5)* cfgTetris.blockSize, 0, (rowIdx - 1) * cfgTetris.blockSize)
-                    if param.usingAirwall then
-                        bpos = VectorTablePlus(bpos, 0, 0, cfgTetris.blockSize / 2)
-                    end
-                    AddPartEntityToTetrisBlock(block, isPreview, awId, VectorFromTable(bpos), rowIdx, colIdx, res)
+                    -- local bpos = VectorTablePlus(posTab, (colIdx - 0.5)* cfgTetris.blockSize, 0, (rowIdx - 1) * cfgTetris.blockSize)
+                    -- if cfg.usingAirwall then
+                    --     bpos = VectorTablePlus(bpos, 0, 0, cfgTetris.blockSize / 2)
+                    -- end
+                    AddPartEntityToTetrisBlock(blockCfg, cfg, awId, rowIdx, colIdx)
                 end
             end
         end
@@ -675,40 +753,63 @@ function InitTetrisBlockEntitySingle(block, match, isPreview, res)
     CopyElementAndChildrenFull(elesInScene.airwall, cfgCopyProps, awCallback, false,
         VectorFromTable(blockCenterPosTab), false, nil,
         cfgElements.airWall.size, 100, 100, 100, nil)
-    -- CopyElementAndChildrenServerEzScale(elesInScene.airwall, cfgCopyProps, awCallback, VectorFromTable(blockCenterPosTab), cfgElements.airWall.size, 100, 100, 100, nil)
 end
 
----给方块创建四个部件
-function AddPartEntityToTetrisBlock(block, isPreview, awId, bpos, row, col, res)
-    local param = nil
-    if isPreview then
-        param = res.preview
-    else
-        param = res.itself
-    end
+---给方块创建四个部件 为了方便旋转,将组件绑定到空气墙上,空气墙放在格子中心
+function AddPartEntityToTetrisBlock(blockCfg, cfg, awId, row, col)
+    printEz("AddPartEntityToTetrisBlock", blockCfg.cfg.type, row, col)
+    local awPos = VectorTablePlus(cfg.posTab, (col - 0.5)* cfgTetris.blockSize, 0, (row - 0.5) * cfgTetris.blockSize)
     local callback = function (eid)
         Element:BindingToElement(eid, awId)
-        if not isPreview then
-            EnsureTableValue(block.localData.parts, Stringfy(row), Stringfy(col)).eid = eid
-        else
-            EnsureTableValue(block.localData.preParts, Stringfy(row), Stringfy(col)).eid = eid
-        end
-        param.partNum = param.partNum + 1
-        if (res.itself.partNum + res.preview.partNum == res.partTotal) and (not res.done) then
-            res.done = true
-            -- PushActionToClients(true, "SyncMoveTetrisDropBlock", block)
-            SyncMoveTetrisDropBlock(block)
-            TimerManager:AddFrame(1, function ()
-                block.localData.entityReady = true
-            end)
-        end
+        SetCustomPropBool(eid, "isPart", true)
+        SetCustomPropNumber(eid, "brow", row)
+        SetCustomPropNumber(eid, "bcol", col)
+        AddPartEntityToPartParent(blockCfg, cfg, eid, row, col)
     end
-    -- CopyElementAndChildrenServerEzScale(elesInScene.cube, cfgCopyProps, callback, bpos, cfgElements.cube.size,
-    --     cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize, nil)
-    CopyElementAndChildrenFull(param.partEid, cfgCopyProps, callback, false,
-        bpos, false, nil,
-        param.orgSize, param.size.x, param.size.y, param.size.z, nil)        
+    CopyElementAndChildrenFull(elesInScene.airwall, cfgCopyProps, callback, false,
+        VectorFromTable(awPos), false, nil,
+        cfgElements.airWall.size, 100, 100, 100, nil)
 end
+
+function AddPartEntityToPartParent(blockCfg, cfg, pid, row, col)
+    printEz("AddPartEntityToPartParent", blockCfg.cfg.type, row, col)
+    local bpos = VectorTablePlus(cfg.posTab, (col - 0.5)* cfgTetris.blockSize, 0, (row - 1) * cfgTetris.blockSize)
+    if cfg.usingAirwall then
+        bpos = VectorTablePlus(bpos, 0, 0, cfgTetris.blockSize / 2)
+    end
+    local callback = function (eid)
+        Element:BindingToElement(eid, pid)
+    end
+    CopyElementAndChildrenFull(cfg.partEid, cfgCopyProps, callback, false,
+        VectorFromTable(bpos), false, nil,
+        cfg.orgSize, cfg.size.x, cfg.size.y, cfg.size.z, nil) 
+end
+
+---给方块创建四个部件 为了方便旋转,将组件绑定到空气墙上,空气墙放在格子中心
+-- function AddPartEntityToTetrisBlockOld(block, cfg, awId, bpos, row, col)
+--     local callback = function (eid)
+--         Element:BindingToElement(eid, awId)
+--         if not isPreview then
+--             EnsureTableValue(block.localData.parts, Stringfy(row), Stringfy(col)).eid = eid
+--         else
+--             EnsureTableValue(block.localData.preParts, Stringfy(row), Stringfy(col)).eid = eid
+--         end
+--         param.partNum = param.partNum + 1
+--         if (res.itself.partNum + res.preview.partNum == res.partTotal) and (not res.done) then
+--             res.done = true
+--             -- PushActionToClients(true, "SyncMoveTetrisDropBlock", block)
+--             SyncMoveTetrisDropBlock(block)
+--             TimerManager:AddFrame(1, function ()
+--                 block.localData.entityReady = true
+--             end)
+--         end
+--     end
+--     -- CopyElementAndChildrenServerEzScale(elesInScene.cube, cfgCopyProps, callback, bpos, cfgElements.cube.size,
+--     --     cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize, nil)
+--     CopyElementAndChildrenFull(param.partEid, cfgCopyProps, callback, false,
+--         bpos, false, nil,
+--         param.orgSize, param.size.x, param.size.y, param.size.z, nil)        
+-- end
 
 ---开始下落
 function SyncMoveTetrisDropBlock(block)
@@ -833,10 +934,16 @@ function GetTetrisBlockCenterPosTab(block, posTab)
     return VectorTablePlus(posTab, colNum/2 * cfgTetris.blockSize, 0, rowNum/2 * cfgTetris.blockSize)
 end
 
+function GetTetrisBlockCenterPosTabFull(blockCfg, posTab)
+    local rowNum = blockCfg.cfg.rowLen
+    local colNum = blockCfg.cfg.colLen
+    return VectorTablePlus(posTab, colNum/2 * cfgTetris.blockSize, 0, rowNum/2 * cfgTetris.blockSize)
+end
+
 function GetTetrisBlockEntityPosTab(block, posTab)
     local blockCenterPosTab = GetTetrisBlockCenterPosTab(block, posTab)
-    return VectorTablePlus(blockCenterPosTab, -1 * block.blockCfg.entityDiffCol * cfgTetris.blockSize, 0, -1 * block.blockCfg.entityDiffRow * cfgTetris.blockSize)
-    -- return blockCenterPosTab
+    -- return VectorTablePlus(blockCenterPosTab, -1 * block.blockCfg.entityDiffCol * cfgTetris.blockSize, 0, -1 * block.blockCfg.entityDiffRow * cfgTetris.blockSize)
+    return blockCenterPosTab
 end
 
 --把方块数据同步到外观
@@ -850,7 +957,10 @@ function SyncTetrisBlockEntityStateWithData(block, posTab, rotateTab, isPreview)
 end
 
 function SetTetrisCameraWatchBoard(match)
-    -- Setting:SwitchToVerticalScreen(true)
+    -- if 1 == 1 then
+    --     return
+    -- end
+    
     Camera:SetOrthographic(true)
     Camera:SetOrthographicWidth(4000)
     local board = match.board
@@ -869,6 +979,8 @@ function SetTetrisCameraWatchBoard(match)
     -- SkyBox:SetDirectionalLightPitch(0)
     -- SkyBox:SetDirectionalLightYaw(-90)
     -- SkyBox:SetSkyBoxRotation(90)
+
+    -- Setting:SwitchToVerticalScreen(true)
 end
 
 function TestRotateBlock()
@@ -894,6 +1006,7 @@ function TestRotateBlock()
 end
 
 function UpdateTetrisDropBlock(deltaTime, obj)
+    -- printEz("UpdateTetrisDropBlock aaa")
     local block = GetTetrisLocalBlock(obj.block)
     if block == nil or block.solidet == true then
         InactiveObj(obj)
@@ -1176,13 +1289,22 @@ function GetTetrisBoardPartDiffSolidet(part)
     return pos
 end
 
+-- --计算棋盘组件位置
+-- function CalcTetrisBoardPartPosOld(board, part, newRowAfterDrop, col)
+--     --先计算组件的左下角
+--     local pos = NewVectorTable(board.boardPosTab.x + (col - 1) * cfgTetris.blockSize, board.boardPosTab.y, board.boardPosTab.z + (newRowAfterDrop - 1) * cfgTetris.blockSize)
+--     local posDiff1 = NewVectorTable(cfgTetris.blockSize / 2, 0, 0)
+--     local posDiff2 = GetTetrisBoardPartDiffSolidet(part)
+--     local posFinal = VectorTablePlus(pos, posDiff2.x, posDiff2.y, posDiff2.z)
+--     -- print("CalcTetrisBoardPartPos ", MiscService:Table2JsonStr(pos), " ", MiscService:Table2JsonStr(posDiff2), " ", MiscService:Table2JsonStr(posFinal))
+--     Element:SetPosition(part.localData.eid, VectorFromTable(posFinal), Element.COORDINATE.World)
+-- end
+
 --计算棋盘组件位置
-function CalcTetrisBoardPartPos(board, part, newRowAfterDrop, col)
+function CalcTetrisBoardPartPos(board, part, row, col)
     --先计算组件的左下角
-    local pos = NewVectorTable(board.boardPosTab.x + (col - 1) * cfgTetris.blockSize, board.boardPosTab.y, board.boardPosTab.z + (newRowAfterDrop - 1) * cfgTetris.blockSize)
-    local posDiff1 = NewVectorTable(cfgTetris.blockSize / 2, 0, 0)
-    local posDiff2 = GetTetrisBoardPartDiffSolidet(part)
-    local posFinal = VectorTablePlus(pos, posDiff2.x, posDiff2.y, posDiff2.z)
+    local pos = NewVectorTable(board.boardPosTab.x + (col - 1) * cfgTetris.blockSize, board.boardPosTab.y, board.boardPosTab.z + (row - 1) * cfgTetris.blockSize)
+    local posFinal = VectorTablePlus(pos, cfgTetris.blockSize / 2, 0, cfgTetris.blockSize / 2)
     -- print("CalcTetrisBoardPartPos ", MiscService:Table2JsonStr(pos), " ", MiscService:Table2JsonStr(posDiff2), " ", MiscService:Table2JsonStr(posFinal))
     Element:SetPosition(part.localData.eid, VectorFromTable(posFinal), Element.COORDINATE.World)
 end
@@ -1499,7 +1621,7 @@ function StartTetrisMatch(players)
     ServerLog("StartTetrisMatch start")
     local id = GetIdFromPoolStringfy("tetrisMatchId", cfgTetris.matchIdStart, 1, 10, nil)
     -- local boardPosTab=VectorToTable(VectorPlus(posOrg, 0, 0, 0))
-    local boardPosTab = NewVectorTable(cfgTetris.board.posX, cfgTetris.board.posY, cfgTetris.board.posZ)
+    local boardPosTab = NewVectorTableCopy(cfgTetris.board.posTab)
     local match = {id=id, players={}, dropSpeed=cfgTetris.dropSpeed, boardPosTab=boardPosTab, active=true}
     tetrisMatchsServer[id] = match
     for index, player in pairs(players) do

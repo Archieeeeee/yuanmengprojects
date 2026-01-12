@@ -1106,6 +1106,14 @@ function CheckCustomPropBoolHas(eid, name)
     return (v ~= nil)
 end
 
+function GetCustomPropNumber(eid, name)
+    return CustomProperty:GetCustomProperty(eid, name, CustomProperty.PROPERTY_TYPE.Number)
+end
+
+function SetCustomPropNumber(eid, name, value)
+    CustomProperty:SetCustomProperty(eid, name, CustomProperty.PROPERTY_TYPE.Number, value)
+end
+
 --需要只在客户端运行的用此方法判断
 function CanRunOnlyOnClient()
     return System:IsStandalone() or System:IsClient()
