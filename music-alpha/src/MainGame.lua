@@ -839,7 +839,7 @@ function TetrisBlockDropMotionUpdate(obj, state, deltaTime)
         block.posTab =  NewVectorTable(x, block.posTab.y, z)
     end
     --通过中间值mposTab缓动
-    MotionUpdateTetrisPosTab(block, deltaTime)
+    MotionUpdatePosTab(deltaTime, block, "posTab", block.localData, "mposTab", math.max(block.dropSpeed, 1000))
     MotionUpdateTetrisRotate(block, deltaTime)
     UpdateTetrisBlockPreview(block, match)
     SyncTetrisBlockEntityStateWithData(block, block.localData.mposTab, block.localData.mrotateTab, false)
@@ -860,9 +860,9 @@ function UpdateTetrisBlockPreview(block, match)
     SyncTetrisBlockEntityStateWithData(block, posTab, block.blockCfg.rotate, true)
 end
 
-function MotionUpdateTetrisPosTab(block, deltaTime)
-    local posTab = block.posTab
-    local mposTab = block.localData.mposTab
+function MotionUpdatePosTab(deltaTime, dstPosObj, dstPosVarName, curPosObj, curPosVarName, speed)
+    local posTab = dstPosObj[dstPosVarName]
+    local mposTab = curPosObj[curPosVarName]
     if IsVectorTableEqual(posTab, mposTab) then
         return
     end
@@ -870,7 +870,6 @@ function MotionUpdateTetrisPosTab(block, deltaTime)
     --     block.localData.mposTab = posTab
     --     return
     -- end
-    local speed = math.max(block.dropSpeed, 1000)
     -- local speed = 900
     local moveDistance = speed * deltaTime
     local distance = UMath:GetDistance(VectorFromTable(posTab), VectorFromTable(mposTab))
@@ -878,7 +877,7 @@ function MotionUpdateTetrisPosTab(block, deltaTime)
     --移动距离超过两者间距
     if moveDistance >= distance then
         -- printEz("MotionUpdateTetrisPosTab no need motion")
-        block.localData.mposTab = NewVectorTableCopy(posTab)
+        curPosObj[curPosVarName] = NewVectorTableCopy(posTab)
         return
     end
     -- local speed = 50
@@ -887,7 +886,7 @@ function MotionUpdateTetrisPosTab(block, deltaTime)
     -- local diff = VectorTableScale(VectorToTable(UMath:GetNormalize(VectorFromTable(diffTotal))), speed * deltaTime)
     local diff = VectorTableScale(diffTotal, moveDistance / distance)
     mposTab = VectorTablePlus(mposTab, diff.x, diff.y, diff.z)
-    block.localData.mposTab = mposTab
+    curPosObj[curPosVarName] = mposTab
 end
 
 function MotionUpdateTetrisRotate(block, deltaTime)
@@ -961,11 +960,23 @@ function SetTetrisCameraWatchBoard(match)
     --     return
     -- end
     
-    Camera:SetOrthographic(true)
-    Camera:SetOrthographicWidth(4000)
     local board = match.board
+    local useVertical = true
+    useVertical = false
+
+    Camera:SetOrthographic(true)
+    if useVertical then
+        Camera:SetOrthographicWidth(cfgTetris.blockSize * board.rowNum)
+    else
+        Camera:SetOrthographicWidth(cfgTetris.blockSize * board.rowNum * 2)
+    end
+    
+    
     local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * board.colNum / 2, 2000, cfgTetris.blockSize * board.rowNum / 2)
     -- local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * board.colNum / 2, 2000, cfgTetris.blockSize * board.rowNum)
+    if useVertical then
+        -- posTab = VectorTablePlus(posTab, 0, 0, -500)
+    end
     Camera:SetPosition(VectorFromTable(posTab))
     Camera:SetCameraFOV(100)
     -- Camera:SetProperty(Camera.PROPERTY.MinPitch, 0)
@@ -980,7 +991,9 @@ function SetTetrisCameraWatchBoard(match)
     -- SkyBox:SetDirectionalLightYaw(-90)
     -- SkyBox:SetSkyBoxRotation(90)
 
-    -- Setting:SwitchToVerticalScreen(true)
+    if useVertical then
+        Setting:SwitchToVerticalScreen(true)
+    end
 end
 
 function TestRotateBlock()
@@ -1218,7 +1231,7 @@ function MergeTetrisBlockDataHandle(action)
     --数据端不需要保留方块数据
     -- PushTetrisSolidetBlock(block, tetrisMatchs)
     --消除检查
-    local fullLineRes = CheckTetrisBoardFullLine(match)
+    local fullLineRes = CheckTetrisBoardFullLine(match, block)
     -- SendSyncTetrisMatchDataToPlayers("SyncTetrisMatchDataUpdateMatchNoPlayerData", match, nil, false)
     print("MergeTetrisBlockDataHandle server ", MiscService:Table2JsonStr(tetrisMatchs[block.matchId].board))
     local resAction = NewTetrisAction(match, nil, block, "MergeTetrisBlockResOnClient")
@@ -1241,7 +1254,7 @@ function CalcTetrisBoardColumnHeights(board)
 end
 
 --检查行满可消除
-function CheckTetrisBoardFullLine(match)
+function CheckTetrisBoardFullLine(match, block)
     local res = {}
     local fullRows = {}
     --一共消除了几行
@@ -1271,7 +1284,7 @@ function CheckTetrisBoardFullLine(match)
     res.fullNum = fullNum
     res.rowDropNum = rowDropNum
     --重新赋值
-    TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, false)
+    TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, false, block)
     CalcTetrisBoardColumnHeights(match.board)
     ServerLog("CheckTetrisBoardFullLinedone ", fullNum, " ", MiscService:Table2JsonStr(match.board))
     return res
@@ -1306,12 +1319,14 @@ function CalcTetrisBoardPartPos(board, part, row, col)
     local pos = NewVectorTable(board.boardPosTab.x + (col - 1) * cfgTetris.blockSize, board.boardPosTab.y, board.boardPosTab.z + (row - 1) * cfgTetris.blockSize)
     local posFinal = VectorTablePlus(pos, cfgTetris.blockSize / 2, 0, cfgTetris.blockSize / 2)
     -- print("CalcTetrisBoardPartPos ", MiscService:Table2JsonStr(pos), " ", MiscService:Table2JsonStr(posDiff2), " ", MiscService:Table2JsonStr(posFinal))
-    Element:SetPosition(part.localData.eid, VectorFromTable(posFinal), Element.COORDINATE.World)
+    return posFinal
 end
 
-function TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, isClient)
+--客户端掉落
+function TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, isClient, block)
     --重新赋值
     local boardCopy = CopyTableShallow(match.board)
+    local dropParts = {}
     --非消除行下移
     for row = 1, match.board.rowNum do
         local toRemove = fullRows[Stringfy(row)] ~= nil
@@ -1325,18 +1340,24 @@ function TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, isClient)
         if isClient then
             for col = 1, boardCopy.colNum do
                 local part = boardCopy.parts[row][col]
-                if not toRemove then
-                    --下移动作
-                    if part.val ~= 0 then
-                        CalcTetrisBoardPartPos(boardCopy, part, newRowAfterDrop, col)
+                if part.val ~= 0 then
+                    local eid = part.localData.eid
+                    if not toRemove then
+                        --下移动作
+                        if newRowAfterDrop ~= row then
+                            local oldPos = CalcTetrisBoardPartPos(boardCopy, part, row, col)
+                            local newPos = CalcTetrisBoardPartPos(boardCopy, part, newRowAfterDrop, col)
+                            table.insert(dropParts, {eid=eid, mposTab=oldPos, posTab=newPos})
+                            -- Element:SetPosition(eid, VectorFromTable(newPos), Element.COORDINATE.World)
+                        end
+                    else
+                        AddMotionToElement(eid, "dropRemove", CfgTools.MotionUnit.Types.Pos, Engine.Vector(800,0,0), 0, 0,
+                        2, 0, 0, 0, 0)
+                        --消除动作
+                        TimerManager:AddTimer(2, function ()
+                            DestroyElementAndChildren(eid)
+                        end)
                     end
-                else
-                    AddMotionToElement(part.localData.eid, "dropRemove", CfgTools.MotionUnit.Types.Pos, Engine.Vector(800,0,0), 0, 0,
-                    2, 0, 0, 0, 0)
-                    --消除动作
-                    TimerManager:AddTimer(2, function ()
-                        DestroyElementAndChildren(part.localData.eid)
-                    end)
                 end
             end
         end
@@ -1346,6 +1367,45 @@ function TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, isClient)
         for col = 1, match.board.colNum do
             match.board.parts[match.board.rowNum - row + 1][col] = {val=0, localData={}}
         end
+    end
+    --掉落缓动
+    if isClient then
+        AddMotionToTetrisDropLines(dropParts, fullNum, math.max(block.dropSpeed + 50, 500))
+    end
+end
+
+function AddMotionToTetrisDropLines(dropParts, fullNum, speed)
+    local id = GetNewMotionId("tetrisLineDrop")
+    local motionObj = {dropParts=dropParts, speed=speed}
+    --保证完整掉落
+    local totalTime = cfgTetris.blockSize * (fullNum + 1) / speed
+    local param = NewMotionParam(id, id, ObjGroups.MotionUnit, 0, motionObj, UpdateMotionUnit, DestroyMotionUnit,
+        totalTime, 0, 0, 0, 0, nil, TetrisBlockPartDropMotionUpdate)
+    local obj = BuildMotionObj(param)
+end
+
+function TetrisBlockPartDropMotionUpdate(obj, state, deltaTime)
+    -- printEz("TetrisBlockPartDropMotionUpdate xxx", MiscService:Table2JsonStr(obj))
+    local dropParts = obj.motionObj.dropParts
+    local speed = obj.motionObj.speed
+    -- local i = 0
+    for index, value in ipairs(dropParts) do
+        -- i = i + 1
+        -- if i == 1 then
+        --     printEz("TetrisBlockPartDropMotionUpdate aa", MiscService:Table2JsonStr(value))
+        -- end
+        if not value.done then
+            if IsVectorTableEqual(value.posTab, value.mposTab) then
+                value.done = true
+            else
+                MotionUpdatePosTab(deltaTime, value, "posTab", value, "mposTab", speed)
+            end
+            Element:SetPosition(value.eid, VectorFromTable(value.mposTab), Element.COORDINATE.World)
+        end
+        
+        -- if i == 1 then
+        --     printEz("TetrisBlockPartDropMotionUpdate 11bb", MiscService:Table2JsonStr(value))
+        -- end
     end
 end
 
@@ -1376,7 +1436,7 @@ function MergeTetrisBlockResOnClient(action)
     --客户端执行掉落
     -- local matchLocalCopy = CopyTableWithoutKey(matchLocal, nil)
     if action.fullLineRes and action.fullLineRes.fullRows then
-        TetrisBoardLineDrop(matchLocal, action.fullLineRes.fullRows, action.fullLineRes.fullNum, action.fullLineRes.rowDropNum, true)
+        TetrisBoardLineDrop(matchLocal, action.fullLineRes.fullRows, action.fullLineRes.fullNum, action.fullLineRes.rowDropNum, true, block)
     end
     print("SolidifyTetrisBlockConfirm CCC is ", MiscService:Table2JsonStr(matchLocal.board))
     --合并掉落后数据

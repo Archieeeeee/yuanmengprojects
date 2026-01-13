@@ -16,6 +16,7 @@ ObjGroups = {Element=0, MotionUnit=2}
 CfgTools = {MotionUnit={Types={Pos=1, Scale=3, Rotate=5}}}
 local toolIdPools = {}
 toolCommonCfgs = {serverPlayerId = -1}
+local toolCommonVars = {idPoolNames={motionId="motionId"}}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -1251,6 +1252,14 @@ end
 
 function Stringfy(value)
     return string.format("%s", value)
+end
+
+function GetNewMotionId(name)
+    local id = GetIdFromPoolStringfy(toolCommonVars.idPoolNames.motionId, 0, 1, 20, nil)
+    if name == nil then
+        return id
+    end
+    return string.format("%s-%s", id, name)
 end
 
 function GetIdFromPoolStringfy(poolName, startNum, incNum, poolSize, poolObj)
