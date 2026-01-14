@@ -839,7 +839,11 @@ function TetrisBlockDropMotionUpdate(obj, state, deltaTime)
         block.posTab =  NewVectorTable(x, block.posTab.y, z)
     end
     --通过中间值mposTab缓动
-    MotionUpdatePosTab(deltaTime, block, "posTab", block.localData, "mposTab", math.max(block.dropSpeed, 1000))
+    local speedVec = NewVectorTable(math.max(block.dropSpeed, 1000), 0, 0)
+    local motionObj = {isSyncDstDone=false, objDestroyFunc=nil, eleMotionType=CfgTools.MotionUnit.Types.Pos, dstVec=nil, dstObj=block,
+    dstVecName="posTab", curObj=block.localData, curVecName="mposTab", speedVec=speedVec, postUpdateFunc=nil}
+    -- MotionUpdatePosTab(deltaTime, block, "posTab", block.localData, "mposTab", math.max(block.dropSpeed, 1000))
+    MotionVecUpdate({motionObj=motionObj}, nil, deltaTime)
     MotionUpdateTetrisRotate(block, deltaTime)
     UpdateTetrisBlockPreview(block, match)
     SyncTetrisBlockEntityStateWithData(block, block.localData.mposTab, block.localData.mrotateTab, false)
@@ -1370,7 +1374,7 @@ function TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, isClient, blo
     end
     --掉落缓动
     if isClient then
-        AddMotionToTetrisDropLines(dropParts, fullNum, math.max(block.dropSpeed + 50, 500))
+        AddMotionToTetrisDropLines(dropParts, fullNum, math.max(block.dropSpeed + 50, 400))
     end
 end
 

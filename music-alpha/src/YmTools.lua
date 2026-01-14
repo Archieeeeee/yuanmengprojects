@@ -16,7 +16,7 @@ ObjGroups = {Element=0, MotionUnit=2}
 CfgTools = {MotionUnit={Types={Pos=1, Scale=3, Rotate=5}}}
 local toolIdPools = {}
 toolCommonCfgs = {serverPlayerId = -1}
-local toolCommonVars = {idPoolNames={motionId="motionId"}}
+local toolCommonVars = {idPoolNames={motionId="motionId"}, names={commonMotion="commonMotion"}}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -491,7 +491,7 @@ function AddNewObj(groupType, type, id, updateDur, updateFunc, lifeDur, destroyF
         lifeDur=lifeDur, destroyFunc=destroyFunc, active=true, createTs=GetGameTimeCur(), states={}}
     AddObjState(obj, nil)
     objectsAio[id] = obj
-    CheckObjPosSynced(id)
+    -- CheckObjPosSynced(id)
     return obj
 end
 
@@ -1154,6 +1154,131 @@ function BuildMotionObj(param)
     return obj
 end
 
+function GetElementVecByMotionType(eid, type)
+    if type == CfgTools.MotionUnit.Types.Pos then
+        return Element:GetPosition(eid)
+    elseif type == CfgTools.MotionUnit.Types.Scale then
+        return Element:GetScale(eid)
+    elseif type == CfgTools.MotionUnit.Types.Rotate then
+        return Element:GetRotation(eid)
+    end
+end
+
+function SetElementVecByMotionType(eid, type, vec)
+    if type == CfgTools.MotionUnit.Types.Pos then
+        return Element:SetPosition(eid, vec, Element.COORDINATE.World)
+    elseif type == CfgTools.MotionUnit.Types.Scale then
+        return Element:SetScale(eid, vec)
+    elseif type == CfgTools.MotionUnit.Types.Rotate then
+        return Element:SetRotation(eid, vec, Element.COORDINATE.World)
+    end
+end
+
+--关于向量的状态机,可以处理位移 旋转 缩放等,支持状态到达提前结束
+function BuildMotionVec(id, objAdd, eid, eleMotionType, dstVec, dstObj, dstVecName, curObj, curVecName, speedVec, isSyncDstDone, postUpdateFunc, objDestroyFunc, initialDelay, totalTime, cycleNum, cycleTime, cycleDelay, isBackAndForth)
+    id = id or GetNewMotionId(toolCommonVars.names.commonMotion)
+    if speedVec == nil then
+        local curVec = nil
+        if dstVec ~= nil and eid ~= nil then
+            curVec = VectorTableEnsure(GetElementVecByMotionType(eid, eleMotionType))
+        elseif curObj ~= nil then
+            curVec = VectorTableEnsure(curObj[curVecName])
+        end
+        --运动时间用单程时间
+        local mtime = cycleTime
+        --否则用全程
+        if mtime == nil or mtime == 0 then
+            mtime = totalTime
+        end
+        if mtime == nil or mtime == 0 then
+            printEz("BuildMotionVec error no time set for element", eid)
+        else
+            speedVec = VectorTableMinusTable(dstVec - curVec) / mtime
+        end
+    end
+    if speedVec == nil then
+        printEz("BuildMotionVec error speedVec nil", id, eid)
+        return
+    end
+    local motionObj = {id=id, objAdd=objAdd, eid=eid, isSyncDstDone=isSyncDstDone, objDestroyFunc=objDestroyFunc, eleMotionType=eleMotionType, dstVec=dstVec, dstObj=dstObj, dstVecName=dstVecName, curObj=curObj, curVecName=curVecName, speedVec=speedVec, postUpdateFunc=postUpdateFunc}
+    local param = NewMotionParam(id, id, ObjGroups.MotionUnit, 0, motionObj, UpdateMotionUnit, DestroyMotionVec,
+        totalTime, cycleTime, initialDelay, cycleNum, cycleDelay, MotionObjAction, MotionVecUpdate)
+    local obj = BuildMotionObj(param)
+    return obj
+end
+
+local function PostMotionVecUpdate(objParent, state, deltaTime, res)
+    local obj = objParent.motionObj
+    if not obj.postUpdateFunc then
+        return
+    end
+    obj.postUpdateFunc(objParent, state, deltaTime, res)
+    return res
+end
+
+function MotionVecUpdate(objParent, state, deltaTime)
+    local obj = objParent.motionObj
+    -- printEz("MotionVecUpdate", MiscService:Table2JsonStr(obj))
+    local res = {needUpdate=true}
+    --获取增量数值
+    local speedVec = obj.speedVec
+    --获取当前数值
+    local mvec = nil
+    if obj.curObj ~= nil then
+        mvec = obj.curObj[obj.curVecName]
+    else
+        mvec = VectorToTable(GetElementVecByMotionType(obj.eid, obj.eleMotionType))
+    end
+    --目标数值
+    local dstVec = obj.dstVec
+    if obj.dstObj then
+        dstVec = obj.dstObj[obj.dstVecName]
+    end
+    --相等直接返回
+    if mvec ~= nil and dstVec ~= nil and IsVectorTableEqual(mvec, dstVec) then
+        res.needUpdate = false
+        return PostMotionVecUpdate(objParent, state, deltaTime, res)
+    end
+    --计算新数据
+    local addVec = nil
+    local newVec = nil
+    --有目标值的情况
+    if dstVec ~= nil then
+        local speed = speedVec.x
+        local moveLen = speed * deltaTime
+        local distance = UMath:GetDistance(VectorFromTable(mvec), VectorFromTable(dstVec))
+        --移动距离大于间距
+        if moveLen >= distance then
+            newVec = NewVectorTableCopy(dstVec)
+            UpdateMotionNewVecHandle(obj, newVec)
+            return PostMotionVecUpdate(objParent, state, deltaTime, res)
+        else
+            --沿相对方向移动
+            local diffTotal = VectorTableMinusTable(dstVec, mvec)
+            local diff = VectorTableScale(diffTotal, moveLen / distance)
+            newVec = VectorTablePlus(mvec, diff.x, diff.y, diff.z)
+            UpdateMotionNewVecHandle(obj, newVec)
+            return PostMotionVecUpdate(objParent, state, deltaTime, res)
+        end
+    else
+        addVec = VectorTableScale(speedVec, deltaTime)
+    end
+    
+    newVec = VectorTablePlusTable(mvec, addVec)
+
+    UpdateMotionNewVecHandle(obj, newVec)
+    return PostMotionVecUpdate(objParent, state, deltaTime, res)
+end
+
+
+function UpdateMotionNewVecHandle(obj, vec)
+    if obj.eid ~= nil then
+        SetElementVecByMotionType(obj.eid, obj.eleMotionType, VectorEnsure(vec))
+    elseif obj.curObj ~= nil then
+        obj.curObj[obj.curVecName] = vec
+    end
+end
+
 function AddMotionToElement(eid, name, motionType, motionVector, isIncrement, initialDelay, totalTime, cycleNum, cycleTime, cycleDelay, isBackAndForth)
     local id = string.format("%s-%s", eid, name)
     local motionObj = {id=id, eid=eid, name=name, type=motionType, vec=VectorToTable(motionVector)}
@@ -1202,11 +1327,30 @@ function MotionObjAction(obj, state)
     print("MotionObjAction start ", MiscService:Table2JsonStr(obj))
 end
 
-function UpdateMotionUnit()
+function UpdateMotionUnit(deltaTime, obj)
 end
 
-function DestroyMotionUnit()
-    
+--通用方法
+function DestroyMotionUnit(deltaTime, obj)
+    local mobj = obj.motionObj
+    if not mobj.objDestroyFunc then
+        return
+    end
+    mobj.objDestroyFunc(deltaTime, obj)
+end
+
+--结束时同步最终数据
+function DestroyMotionVec(deltaTime, objParent)
+    local obj = objParent.motionObj
+    if obj.isSyncDstDone then
+        local dstVec = obj.dstVec
+        if obj.dstObj then
+            dstVec = obj.dstObj[obj.dstVecName]
+        end
+        local newVec = NewVectorTableCopy(dstVec)
+        UpdateMotionNewVecHandle(obj, newVec)
+    end
+    DestroyMotionUnit(deltaTime, obj)
 end
 
 function RemoveMotionByEidAndName(eid, name)
@@ -1240,6 +1384,22 @@ end
 
 function NewVectorTableCopy(tab)
     return {x = tab.x, y = tab.y, z = tab.z}
+end
+
+--保证返回table三元组
+function VectorTableEnsure(vec)
+    if vec.X ~= nil then
+        return {x=vec.X, y=vec.Y, z=vec.Z}
+    end
+    return vec
+end
+
+--保证返回vector三元组
+function VectorEnsure(tab)
+    if tab.x ~= nil then
+        return Engine.Vector(tab.x, tab.y, tab.z)
+    end
+    return tab
 end
 
 function IsVectorTableEqual(tabA, tabB)
