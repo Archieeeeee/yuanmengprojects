@@ -140,11 +140,18 @@ end
 ---@param startTs any 状态开始
 ---@param endTs any 状态结束标志,不需要设置
 ---@param dur any 
-function SetObjState(obj, name, totalTime, cycleTime)
+function SetObjState(obj, name, totalTime, cycleTime, initDelay)
     local state = GetObjState(obj, name)
-    if totalTime ~= 0 then
-        state.totalTime = totalTime
+    totalTime = totalTime or 0
+    cycleTime = cycleTime or 0
+    state.initDelay = initDelay or 0
+    state.totalTime = totalTime
+    if state.totalTime ~= 0 and state.totalTime < state.initDelay then
+        printEz("SetObjState error totalTime less than delay")
     end
+    -- if totalTime ~= 0 then
+    --     state.totalTime = totalTime
+    -- end
     if cycleTime ~= 0 then
         state.cycleTime = cycleTime
     end
@@ -248,20 +255,25 @@ function CheckSingleObjState(state, deltaTime, obj)
             ObjStateEnd(obj, cs)
         elseif cs.numLimit ~= 0 and cs.count > cs.numLimit then
             ObjStateEnd(obj, cs)
-        elseif cs.actionTs == 0 then
-            local delay = cs.cycleDelay
-            if cs.count == 1 then
-                delay = cs.initDelay
+        else
+            --检查是否需要开始action
+            if cs.actionTs == 0 then
+                local delay = cs.cycleDelay
+                if cs.count == 1 then
+                    delay = cs.initDelay
+                end
+                if cs.cycleDelta >= delay then
+                    ObjStateAction(obj, cs)
+                end
             end
-            if cs.cycleDelta >= delay then
-                ObjStateAction(obj, cs)
-            end
-        elseif cs.actionTs > 0 then
-            cs.actionDelta = cs.actionDelta + deltaTime
-            if cs.cycleTime ~= 0 and cs.actionDelta >= cs.cycleTime then
-                ObjStateCycleEnd(obj, cs)
-            else
-                ObjStateActionUpdate(obj, cs, deltaTime)
+            --检查action结束
+            if cs.actionTs > 0 then
+                cs.actionDelta = cs.actionDelta + deltaTime
+                if cs.cycleTime ~= 0 and cs.actionDelta >= cs.cycleTime then
+                    ObjStateCycleEnd(obj, cs)
+                else
+                    ObjStateActionUpdate(obj, cs, deltaTime)
+                end
             end
         end
     end
@@ -1137,14 +1149,18 @@ end
 function BuildMotionObj(param)
     local totalTime = param.totalTime
     local cycleTime = param.cycleTime
+    if totalTime ~= 0 and totalTime < param.initialDelay then
+        printEz("SetObjState error totalTime less than delay")
+    end
     local obj = AddNewObj(param.objGroup, param.objType, param.objId, 0, param.objUpdateFunc, totalTime, param.objDestroyFunc)
     obj.motionObj = param.motionObj
+    --todo 根据cycle time num isBackAndForth 重新计算totalTime = math.max(totalTime, num * cycle)
     AddObjState(obj, "mu.move")
-    SetObjState(obj, "mu.move", totalTime, cycleTime)
+    SetObjState(obj, "mu.move", totalTime, cycleTime, param.initialDelay)
     SetObjStateFunc(obj, "mu.move", nil, nil, nil, param.actionFunc, param.updateFunc)
     if param.isBackAndForth then
         AddObjState(obj, "mu.moveBack")
-        SetObjState(obj, "mu.moveBack", totalTime, cycleTime)
+        SetObjState(obj, "mu.moveBack", totalTime, cycleTime, 0)
         SetObjStateNextCycle(obj, "mu.move", "mu", "moveBack")
         SetObjStateNextCycle(obj, "mu.moveBack", "mu", "move")
         SetObjStateFunc(obj, "mu.moveBack", nil, nil, nil, param.actionFunc, param.updateFunc)
@@ -1193,7 +1209,9 @@ function BuildMotionVec(id, objAdd, eid, eleMotionType, dstVec, dstObj, dstVecNa
         if mtime == nil or mtime == 0 then
             printEz("BuildMotionVec error no time set for element", eid)
         else
-            speedVec = VectorTableMinusTable(dstVec - curVec) / mtime
+            local distance = UMath:GetDistance(VectorFromTable(curVec), VectorFromTable(dstVec))
+            speedVec = NewVectorTable(distance/mtime, 0, 0)
+            printEz("BuildMotionVecspeedVec", MiscService:Table2JsonStr(curVec), MiscService:Table2JsonStr(speedVec))
         end
     end
     if speedVec == nil then
@@ -1279,6 +1297,17 @@ function UpdateMotionNewVecHandle(obj, vec)
     end
 end
 
+function AddMotionToElementOneTime(eid, name, motionType, dstVec, speedVec, initialDelay, totalTime)
+    local id = string.format("%s-%s", eid, name)
+    local isSyncDstDone = false
+    if dstVec then
+        isSyncDstDone = true
+    end
+    local obj = BuildMotionVec(id, nil, eid, motionType, dstVec, nil, nil, nil, nil,
+    speedVec, isSyncDstDone, nil, nil, initialDelay, totalTime, nil, nil, nil, false)
+    return obj
+end
+
 function AddMotionToElement(eid, name, motionType, motionVector, isIncrement, initialDelay, totalTime, cycleNum, cycleTime, cycleDelay, isBackAndForth)
     local id = string.format("%s-%s", eid, name)
     local motionObj = {id=id, eid=eid, name=name, type=motionType, vec=VectorToTable(motionVector)}
@@ -1350,7 +1379,7 @@ function DestroyMotionVec(deltaTime, objParent)
         local newVec = NewVectorTableCopy(dstVec)
         UpdateMotionNewVecHandle(obj, newVec)
     end
-    DestroyMotionUnit(deltaTime, obj)
+    DestroyMotionUnit(deltaTime, objParent)
 end
 
 function RemoveMotionByEidAndName(eid, name)

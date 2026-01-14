@@ -1355,8 +1355,12 @@ function TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, isClient, blo
                             -- Element:SetPosition(eid, VectorFromTable(newPos), Element.COORDINATE.World)
                         end
                     else
-                        AddMotionToElement(eid, "dropRemove", CfgTools.MotionUnit.Types.Pos, Engine.Vector(800,0,0), 0, 0,
-                        2, 0, 0, 0, 0)
+                        local scaleVec = GetScaleDstCalcXyz(cfgElements.woodBoxB.size, 1, 1, 1)
+                        printEz("dropRemovedropRemove", MiscService:Table2JsonStr(VectorToTable(scaleVec)))
+                        AddMotionToElementOneTime(eid, "dropRemove", CfgTools.MotionUnit.Types.Scale, VectorToTable(scaleVec),
+                        nil, 0, 0.3)
+                        -- AddMotionToElement(eid, "dropRemove", CfgTools.MotionUnit.Types.Pos, Engine.Vector(800,0,0), 0, 0,
+                        -- 2, 0, 0, 0, 0)
                         --消除动作
                         TimerManager:AddTimer(2, function ()
                             DestroyElementAndChildren(eid)
@@ -1382,9 +1386,11 @@ function AddMotionToTetrisDropLines(dropParts, fullNum, speed)
     local id = GetNewMotionId("tetrisLineDrop")
     local motionObj = {dropParts=dropParts, speed=speed}
     --保证完整掉落
+    local delay = 0.3
     local totalTime = cfgTetris.blockSize * (fullNum + 1) / speed
+    totalTime = totalTime + delay
     local param = NewMotionParam(id, id, ObjGroups.MotionUnit, 0, motionObj, UpdateMotionUnit, DestroyMotionUnit,
-        totalTime, 0, 0, 0, 0, nil, TetrisBlockPartDropMotionUpdate)
+        totalTime, 0, delay, 0, 0, nil, TetrisBlockPartDropMotionUpdate)
     local obj = BuildMotionObj(param)
 end
 
@@ -1961,9 +1967,9 @@ function GenBossAfterPlatform(pid)
     obj.pid = pid
 
     AddObjState(obj, "move.toMove")
-    SetObjState(obj, "move.toMove", 0, 5)
+    SetObjState(obj, "move.toMove", 0, 5, 0)
     AddObjState(obj, "move.toAttack")
-    SetObjState(obj, "move.toAttack", 0, 5)
+    SetObjState(obj, "move.toAttack", 0, 5, 0)
     SetObjStateNextCycle(obj, "move.toMove", "move", "toAttack")
     SetObjStateNextCycle(obj, "move.toAttack", "move", "toMove")
     SetObjStateFunc(obj, "move.toMove", nil, nil, StartMoveBoss, nil, nil)
@@ -2187,7 +2193,7 @@ function GenBlockBrick()
     local callback = function (eid)
         local obj = AddNewObj(0, typeObjs.brick, eid, 0, UpdateBrick, 17, CommonDestroy)
         AddObjState(obj, "move.toMove")
-        SetObjState(obj, "move.toMove",  90, 0)
+        SetObjState(obj, "move.toMove",  90, 0, 0)
         SetObjStateFunc(obj, "move.toMove", nil, nil, StartMoveBrick, nil, nil)
         local children = Element:GetChildElementsFromElement(obj.id)
         obj.bricks = {}
@@ -2224,7 +2230,7 @@ function GenBlockUnknown(withMotion)
 
         if withMotion then
             AddObjState(obj, "move.toMove")
-            SetObjState(obj, "move.toMove", 90, 0)
+            SetObjState(obj, "move.toMove", 90, 0, 0)
             SetObjStateFunc(obj, "move.toMove", nil, nil, StartMoveBlock, nil, nil)
             StartObjStateByName(obj, "move", "toMove")
         else
