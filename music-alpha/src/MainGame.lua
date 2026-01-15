@@ -5,7 +5,7 @@ local platformId = 229
 local msgIdBlockState = 100115
 posOrg = Engine.Vector(0, 0, 0)
 
-local typeObjs = {boss = 1000, blockUnknown=101, brick=103, tetrisBlock=2001}
+local typeObjs = {boss = 1000, blockUnknown=101, brick=103, tetrisBlock=2001, dropEffect=2003}
 local cfgAirWallId = 1105000000000074
 local cfgElements = {}
 local protos = {}
@@ -16,7 +16,7 @@ animeDemo = {cur=0, lastName=nil, lastPlay=0, lastCount=0}
 ymAnimes = {}
 local elesInScene = {airwall=331, cube=381, brick=334, frameBoard=531, cubeGlass=541, cubeBlackWhite=570, boxFramed=561,
      woodBox=560, buyi=559, floorBox=562, dianban=630, boxElec=563, cubeBlackWhiteW=548, towerCeil=608, cyberBox=556,
-     woodBoxB=618, cheese=613}
+     woodBoxB=618, cheese=613, effGoldAir=735}
 -- local tetrisBoard = {parts={}, columnHeights={}}
 cfgTetrisBlock_1_1 = {parts={{1,1,0,0}, {0,1,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=1, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
 cfgTetrisBlock_2_1 = {parts={{0,1,1,0}, {1,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=2, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
@@ -27,7 +27,7 @@ cfgTetrisBlock_6_1 = {parts={{1,1,1,0}, {1,0,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={
 cfgTetrisBlock_7_1 = {parts={{1,1,1,0}, {0,0,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=7, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
 -- cfgTetrisBlock_1_2 = {parts={{0,0,0,0}, {0,1,0,0}, {1,1,0,0}, {1,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, entityDiffRow=1, entityDiffCol=0, rotate={x=90, y=0, z=90}}}
 local cfgTetris = {blockSize=100, dropSpeed=100, board={rowNum=20, colNum=10, posTab={x=150, y=1850, z=400}}, matchIdStart=0,
-    skins={default="default"}}
+    skins={default="default"}, dropSpeedUncontrollable=3000}
 -- local tetrisPlayerData = {dropSpeed=100, dropBlocks={}, boardPosTab=nil}
 local players = {}
 --服务端只负责记录
@@ -110,7 +110,9 @@ function GameInitVars()
     cfgElements.cyberBox = {id=1101002001002002, size=Engine.Vector(3, 3, 3)}
     cfgElements.woodBoxB = {id=1102015001002498, size=Engine.Vector(2, 2, 1.5)}
     cfgElements.cheese = {id=1102015001002933, size=Engine.Vector(0.99, 0.98, 0.98)}
-    
+    cfgElements.effLiquidLight = {id=1102015001001251, size=Engine.Vector(1.2, 1.2, 6)}
+    cfgElements.effGoldAir = {id=1102015001003330, size=Engine.Vector(4, 4, 15.01)}
+    cfgElements.effAurora = {id=1102004001001001, size=Engine.Vector(3, 10, 5.51)}
 
     posOrg = Element:GetPosition(platformId)
     LoadGlobalVarsFromData(cfgDataNames)
@@ -205,7 +207,7 @@ function GetTetrisControlBlock()
     for key, match in pairs(tetrisMatchsLocal) do
         for key, player in pairs(match.players) do
             for key, block in pairs(player.dropBlocks) do
-                if block.active and IsBlockPlayerSelf(block) and block.localData and block.localData.entityReady then
+                if block.active and IsBlockPlayerSelf(block) and block.localData and block.localData.entityReady and block.localData.controllable then
                     return block
                 end
             end
@@ -482,7 +484,7 @@ end
 ---新建方块
 function NewTetrisBlock(type, morph)
     local id = GetIdFromPoolStringfy("dropBlockId", 0, 1, 10, nil)
-    local block = {id=id, active=true, dropInited=false, solidet=false, localData={parts={}, preParts={}}}
+    local block = {id=id, active=true, dropInited=false, solidet=false, localData={parts={}, preParts={}, controllable=true}}
     SetTetrisBlockCfg(block, type, morph)
     -- block.curColumn = math.floor(cfgTetris.board.colNum / 2)
     block.curColumn = math.random(1, cfgTetris.board.colNum - 4)
@@ -831,15 +833,30 @@ function TetrisBlockDropMotionUpdate(obj, state, deltaTime)
     if block.solidet then
         return
     end
+    local dropSpeed = block.dropSpeed
+    if not block.localData.controllable then
+        dropSpeed = cfgTetris.dropSpeedUncontrollable
+    end
     -- print("TetrisBlockDropMotionUpdate block ", MiscService:Table2JsonStr(block))
     local x = GetTetrisBlockPosX(block, match.board.boardPosTab)
-    local z = (block.posTab.z - block.dropSpeed * deltaTime)
+    local z = (block.posTab.z - dropSpeed * deltaTime)
     --todo 999
+    --检查是否超出了最低行
+    -- local curRow = CalcTetrisBlockCurRow(block.posTab, match.board)
+    -- local botRow = CalcTetrisBlockBottomRow(block, match.board, curRow)
+    -- local botZ = match.board.boardPosTab.z + (botRow - 1) * cfgTetris.blockSize
+    -- -xxx
+    -- printEz("ControlTetrisBlockToBottombotz", curRow, botRow, MiscService:Table2JsonStr(block.posTab),
+    --     MiscService:Table2JsonStr(block.localData.mposTab), botZ, dropSpeed * deltaTime)
+    -- if (block.posTab.z - dropSpeed * deltaTime * 2) <= botZ then
+    --     ControlTetrisBlockToBottom(block, match, botRow)
+    --     return
+    -- end
     if true or state.totalDelta < 18 then
-        block.posTab =  NewVectorTable(x, block.posTab.y, z)
+        block.posTab = NewVectorTable(x, block.posTab.y, z)
     end
     --通过中间值mposTab缓动
-    local speedVec = NewVectorTable(math.max(block.dropSpeed, 1000), 0, 0)
+    local speedVec = NewVectorTable(math.max(dropSpeed, 1000), 0, 0)
     local motionObj = {isSyncDstDone=false, objDestroyFunc=nil, eleMotionType=CfgTools.MotionUnit.Types.Pos, dstVec=nil, dstObj=block,
     dstVecName="posTab", curObj=block.localData, curVecName="mposTab", speedVec=speedVec, postUpdateFunc=nil}
     -- MotionUpdatePosTab(deltaTime, block, "posTab", block.localData, "mposTab", math.max(block.dropSpeed, 1000))
@@ -853,6 +870,7 @@ function CalcTetrisBlockPreviewPos(block, board)
     local blockRow = CalcTetrisBlockCurRow(block.posTab, board)
     local botRow = CalcTetrisBlockBottomRow(block, board, blockRow)
     local posTab = GetTetrisBlockPosTab(board, botRow, block.curColumn)
+    -- posTab = VectorTablePlus(posTab, 0, -200, 0)
     return posTab
 end
 
@@ -960,9 +978,9 @@ function SyncTetrisBlockEntityStateWithData(block, posTab, rotateTab, isPreview)
 end
 
 function SetTetrisCameraWatchBoard(match)
-    -- if 1 == 1 then
-    --     return
-    -- end
+    if 1 == 1 then
+        return
+    end
     
     local board = match.board
     local useVertical = true
@@ -1135,11 +1153,54 @@ function SolidifyTetrisBlockSimulate(block, mergeRow, blockColumn, match)
 end
 
 function DestroyTetrisBlockPreview(block)
-    for row, rv in pairs(block.localData.preParts) do
-        for col, value in pairs(rv) do
-            DestroyElementAndChildren(value.eid)
-        end
+    DestroyElementAndChildren(block.localData.preAwId)
+end
+
+function CreateEffectOnTetrisBlock(match)
+    -- local effect =  Particle:PlayOnActor(110, block.localData.awId, true, 999)
+    -- printEz("CreateEffectOnTetrisBlock", effect)
+    -- Particle:SetParticleScale(effect, Engine.Vector(10, 10, 10))
+    -- Particle:SetParticleVisible(effect, true)
+    -- Particle:SetParticleRotation(effect, Engine.Vector(180, 0, 0))
+    -- Particle:SetParticlePosition(effect, Engine.Vector(500, 0, 0))
+    local pos = VectorTablePlus(match.board.boardPosTab, 0, 20, cfgTetris.blockSize * match.board.rowNum)
+    pos = VectorTablePlus(match.board.boardPosTab, 0, 0, 0)
+    local size = NewVectorTable(cfgTetris.blockSize * match.board.colNum, cfgTetris.blockSize * 3, cfgTetris.blockSize * match.board.rowNum)
+    local scale = GetScaleDstCalcXyz(cfgElements.effAurora.size, size.x, size.y, size.z)
+    local effId = Particle:PlayAtPosition(76, VectorFromTable(pos), 1, false, 999)
+    Particle:SetParticleRotation(effId, Engine.Vector(0, 0, 0))
+    Particle:SetParticleScale(effId, VectorFromTable(scale))
+    printEz("CreateEffectOnTetrisBlock", effId)
+    local obj = AddNewObj(0, typeObjs.dropEffect, effId, 0.01, nil, 999, nil)
+    local downTime = 0.5
+    obj.effObj = {effId=effId, posTab=pos, speedDown= -1 * size.z / downTime}
+    AddObjState(obj, "move.down")
+    SetObjState(obj, "move.down", 1, 0, 0)
+    SetObjStateFunc(obj, "move.down", nil, nil, nil, nil, UpdateEffectTetrisFastDown)
+    SetObjStateNextCycle(obj, "move.down", "move", "scale")
+
+    AddObjState(obj, "move.scale")
+    SetObjState(obj, "move.scale", 0.5, 0, 0)
+    SetObjStateFunc(obj, "move.scale", nil, nil, nil, nil, UpdateEffectTetrisFastDown)
+
+    StartObjStateByName(obj, "move", "down")
+    -- local callback = function (eid)
+    --     printEz("CreateEffectOnTetrisBlock", eid)
+    -- end
+    -- CopyElementAndChildrenServerEzScale(elesInScene.effGoldAir, cfgCopyProps, callback, VectorFromTable(pos),
+    -- cfgElements.effGoldAir.size, scale.X, scale.Y, scale.Z, nil)
+end
+
+function UpdateEffectTetrisFastDown(objParent, state, deltaTime)
+    local obj = objParent.effObj
+    local effId = obj.effId
+    if state.fullname == "objStates.move.down" then
+        obj.posTab = VectorTablePlus(obj.posTab, 0, 0, obj.speedDown * deltaTime)
+        Particle:SetParticlePosition(effId, VectorFromTable(obj.posTab))
+    elseif state.fullname == "objStates.move.scale" then
     end
+    -- printEz("UpdateEffectTetrisFastDown", MiscService:Table2JsonStr(state))
+    
 end
 
 function RemoveTetrisBlockData(block, matches)
@@ -1525,6 +1586,7 @@ function SolidifyTetrisBlockConfirm(block, board)
             end
         end
     end
+    DestroyElementAndChildren(block.localData.awId)
 end
 
 --设置curColumn,保证不会方块不会超出棋盘
@@ -1615,6 +1677,7 @@ function CalcTetrisBlockBottomRow(block, board, blockRow)
 end
 
 function ControlTetrisBlockToBottom(block, match, botRow)
+    CreateEffectOnTetrisBlock(match)
     block.curRow = botRow
     block.mergeRow = block.curRow
     SolidifyTetrisBlockSimulateAll(block, block.curRow, block.curColumn, match)
@@ -1627,6 +1690,9 @@ function ControlActionTetrisBlockLocal(isRotate, isMoveLeft, isMoveDown, isFastM
     if block == nil then
         return res
     end
+    -- if isFastMoveDown then
+    --     block.localData.controllable = false
+    -- end
     local match = GetMatchLocalByBlock(block)
     --移动到底
     if isFastMoveDown then
