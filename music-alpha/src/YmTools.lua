@@ -244,43 +244,55 @@ function CheckSingleObjState(state, deltaTime, obj)
     --检查当前状态名称对应的状态
     if (state.cur ~= nil) and (state.cur ~= "") then
         local cs = state.states[state.cur]
-        cs.totalDelta = cs.totalDelta + deltaTime
-        cs.cycleDelta = cs.cycleDelta + deltaTime
-        --未开始
-        if cs.startTs == 0 then
-        --已结束
-        elseif cs.endTs ~= 0 then
-        --判断结束
-        elseif cs.totalTime ~= 0 and cs.totalDelta >= cs.totalTime then
-            ObjStateEnd(obj, cs)
-        elseif cs.numLimit ~= 0 and cs.count > cs.numLimit then
-            ObjStateEnd(obj, cs)
-        else
-            --检查是否需要开始action
-            if cs.actionTs == 0 then
-                local delay = cs.cycleDelay
-                if cs.count == 1 then
-                    delay = cs.initDelay
-                end
-                if cs.cycleDelta >= delay then
-                    ObjStateAction(obj, cs)
-                end
-            end
-            --检查action结束
-            if cs.actionTs > 0 then
-                cs.actionDelta = cs.actionDelta + deltaTime
-                if cs.cycleTime ~= 0 and cs.actionDelta >= cs.cycleTime then
-                    ObjStateCycleEnd(obj, cs)
-                else
-                    ObjStateActionUpdate(obj, cs, deltaTime)
-                end
-            end
-        end
+        CheckSingleObjStateCur(cs, deltaTime, obj)
     end
     
     if state.states ~= nil then
         for key, childState in pairs(state.states) do
             CheckSingleObjState(childState, deltaTime, obj)
+        end
+    end
+end
+
+function CheckSingleObjStateCur(cs, deltaTime, obj)
+    cs.totalDelta = cs.totalDelta + deltaTime
+    cs.cycleDelta = cs.cycleDelta + deltaTime
+    --未开始
+    if cs.startTs == 0 then
+        return
+    end
+    --已结束
+    if cs.endTs ~= 0 then
+        return
+    end
+    --开始过但是超时判断结束
+    if cs.startTs > 0 and cs.totalTime ~= 0 and cs.totalDelta >= cs.totalTime then
+        ObjStateEnd(obj, cs)
+        return
+    end
+    --开始过但是超过循环次数判断结束
+    if cs.startTs > 0 and cs.numLimit ~= 0 and cs.count > cs.numLimit then
+        ObjStateEnd(obj, cs)
+        return
+    end
+
+    --检查是否需要开始action
+    if cs.actionTs == 0 then
+        local delay = cs.cycleDelay
+        if cs.count == 1 then
+            delay = cs.initDelay
+        end
+        if cs.cycleDelta >= delay then
+            ObjStateAction(obj, cs)
+        end
+    end
+    --检查action结束
+    if cs.actionTs > 0 then
+        cs.actionDelta = cs.actionDelta + deltaTime
+        if cs.cycleTime ~= 0 and cs.actionDelta >= cs.cycleTime then
+            ObjStateCycleEnd(obj, cs)
+        else
+            ObjStateActionUpdate(obj, cs, deltaTime)
         end
     end
 end
@@ -1190,15 +1202,22 @@ function SetElementVecByMotionType(eid, type, vec)
     end
 end
 
---关于向量的状态机,可以处理位移 旋转 缩放等,支持状态到达提前结束
-function BuildMotionVec(id, objAdd, eid, eleMotionType, dstVec, dstObj, dstVecName, curObj, curVecName, speedVec, isSyncDstDone, postUpdateFunc, objDestroyFunc, initialDelay, totalTime, cycleNum, cycleTime, cycleDelay, isBackAndForth)
-    id = id or GetNewMotionId(toolCommonVars.names.commonMotion)
+function BuildMotionObjVecDst(dstVec, dstObj, dstVecName, curObj, curVecName, totalTime, postUpdateFunc, syncDstDoneFunc)
+    local motionObj = {isSyncDstDone=false, objDestroyFunc=nil, eleMotionType=CfgTools.MotionUnit.Types.Pos, dstVec=dstVec, dstObj=dstObj,
+    dstVecName=dstVecName, curObj=curObj, curVecName=curVecName, speedVec=nil, postUpdateFunc=postUpdateFunc, syncDstDoneFunc=syncDstDoneFunc}
+    CheckMotionObjSpeedVec(motionObj, totalTime, 0)
+    -- MotionVecUpdate({motionObj=motionObj}, nil, deltaTime)
+    return motionObj
+end
+
+function CheckMotionObjSpeedVec(mobj, totalTime, cycleTime)
+    local speedVec = mobj.speedVec
     if speedVec == nil then
         local curVec = nil
-        if dstVec ~= nil and eid ~= nil then
-            curVec = VectorTableEnsure(GetElementVecByMotionType(eid, eleMotionType))
-        elseif curObj ~= nil then
-            curVec = VectorTableEnsure(curObj[curVecName])
+        if mobj.dstVec ~= nil and mobj.eid ~= nil then
+            curVec = VectorTableEnsure(GetElementVecByMotionType(mobj.eid, mobj.eleMotionType))
+        elseif mobj.curObj ~= nil then
+            curVec = VectorTableEnsure(mobj.curObj[mobj.curVecName])
         end
         --运动时间用单程时间
         local mtime = cycleTime
@@ -1207,18 +1226,25 @@ function BuildMotionVec(id, objAdd, eid, eleMotionType, dstVec, dstObj, dstVecNa
             mtime = totalTime
         end
         if mtime == nil or mtime == 0 then
-            printEz("BuildMotionVec error no time set for element", eid)
+            printEz("BuildMotionVec error no time set for element", mobj.eid)
         else
-            local distance = UMath:GetDistance(VectorFromTable(curVec), VectorFromTable(dstVec))
+            local distance = UMath:GetDistance(VectorFromTable(curVec), VectorFromTable(mobj.dstVec))
             speedVec = NewVectorTable(distance/mtime, 0, 0)
             printEz("BuildMotionVecspeedVec", MiscService:Table2JsonStr(curVec), MiscService:Table2JsonStr(speedVec))
+            mobj.speedVec = speedVec
         end
     end
     if speedVec == nil then
-        printEz("BuildMotionVec error speedVec nil", id, eid)
+        printEz("BuildMotionVec error speedVec nil", mobj.id, mobj.eid)
         return
     end
+end
+
+--关于向量的状态机,可以处理位移 旋转 缩放等,支持状态到达提前结束
+function BuildMotionVec(id, objAdd, eid, eleMotionType, dstVec, dstObj, dstVecName, curObj, curVecName, speedVec, isSyncDstDone, postUpdateFunc, objDestroyFunc, initialDelay, totalTime, cycleNum, cycleTime, cycleDelay, isBackAndForth)
+    id = id or GetNewMotionId(toolCommonVars.names.commonMotion)
     local motionObj = {id=id, objAdd=objAdd, eid=eid, isSyncDstDone=isSyncDstDone, objDestroyFunc=objDestroyFunc, eleMotionType=eleMotionType, dstVec=dstVec, dstObj=dstObj, dstVecName=dstVecName, curObj=curObj, curVecName=curVecName, speedVec=speedVec, postUpdateFunc=postUpdateFunc}
+    CheckMotionObjSpeedVec(motionObj, totalTime, cycleTime)
     local param = NewMotionParam(id, id, ObjGroups.MotionUnit, 0, motionObj, UpdateMotionUnit, DestroyMotionVec,
         totalTime, cycleTime, initialDelay, cycleNum, cycleDelay, MotionObjAction, MotionVecUpdate)
     local obj = BuildMotionObj(param)
@@ -1378,6 +1404,9 @@ function DestroyMotionVec(deltaTime, objParent)
         end
         local newVec = NewVectorTableCopy(dstVec)
         UpdateMotionNewVecHandle(obj, newVec)
+        if obj.syncDstDoneFunc then
+            obj.syncDstDoneFunc(objParent, deltaTime)
+        end
     end
     DestroyMotionUnit(deltaTime, objParent)
 end

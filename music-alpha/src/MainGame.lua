@@ -1164,23 +1164,26 @@ function CreateEffectOnTetrisBlock(match)
     -- Particle:SetParticleRotation(effect, Engine.Vector(180, 0, 0))
     -- Particle:SetParticlePosition(effect, Engine.Vector(500, 0, 0))
     local pos = VectorTablePlus(match.board.boardPosTab, 0, 20, cfgTetris.blockSize * match.board.rowNum)
-    pos = VectorTablePlus(match.board.boardPosTab, 0, 0, 0)
+    -- pos = VectorTablePlus(match.board.boardPosTab, 0, 0, 0)
     local size = NewVectorTable(cfgTetris.blockSize * match.board.colNum, cfgTetris.blockSize * 3, cfgTetris.blockSize * match.board.rowNum)
     local scale = GetScaleDstCalcXyz(cfgElements.effAurora.size, size.x, size.y, size.z)
+    local dstScale = GetScaleDstCalcXyz(cfgElements.effAurora.size, size.x, size.y, 1)
     local effId = Particle:PlayAtPosition(76, VectorFromTable(pos), 1, false, 999)
     Particle:SetParticleRotation(effId, Engine.Vector(0, 0, 0))
     Particle:SetParticleScale(effId, VectorFromTable(scale))
     printEz("CreateEffectOnTetrisBlock", effId)
     local obj = AddNewObj(0, typeObjs.dropEffect, effId, 0.01, nil, 999, nil)
-    local downTime = 0.5
-    obj.effObj = {effId=effId, posTab=pos, speedDown= -1 * size.z / downTime}
+    local downTime = 0.25
+    local scaleTime = 0.25
+    obj.effObj = {effId=effId, posTab=pos, speedDown= -1 * size.z / downTime, scale=VectorToTable(scale), speedScale=(dstScale.Z - scale.Z)/scaleTime}
+    obj.motionObj = BuildMotionObjVecDst(xxx)
     AddObjState(obj, "move.down")
-    SetObjState(obj, "move.down", 1, 0, 0)
+    SetObjState(obj, "move.down", downTime, 0, 0)
     SetObjStateFunc(obj, "move.down", nil, nil, nil, nil, UpdateEffectTetrisFastDown)
-    SetObjStateNextCycle(obj, "move.down", "move", "scale")
+    SetObjStateNextEnd(obj, "move.down", "move", "scale")
 
     AddObjState(obj, "move.scale")
-    SetObjState(obj, "move.scale", 0.5, 0, 0)
+    SetObjState(obj, "move.scale", scaleTime, 0, 0)
     SetObjStateFunc(obj, "move.scale", nil, nil, nil, nil, UpdateEffectTetrisFastDown)
 
     StartObjStateByName(obj, "move", "down")
@@ -1195,12 +1198,14 @@ function UpdateEffectTetrisFastDown(objParent, state, deltaTime)
     local obj = objParent.effObj
     local effId = obj.effId
     if state.fullname == "objStates.move.down" then
+        -- printEz("UpdateEffectTetrisFastDown", MiscService:Table2JsonStr(state))
         obj.posTab = VectorTablePlus(obj.posTab, 0, 0, obj.speedDown * deltaTime)
         Particle:SetParticlePosition(effId, VectorFromTable(obj.posTab))
     elseif state.fullname == "objStates.move.scale" then
+        printEz("UpdateEffectTetrisFastDown", MiscService:Table2JsonStr(state))
+        obj.scale = VectorTablePlus(obj.scale, 0, 0, obj.speedScale * deltaTime)
+        Particle:SetParticleScale(effId, VectorFromTable(obj.scale))
     end
-    -- printEz("UpdateEffectTetrisFastDown", MiscService:Table2JsonStr(state))
-    
 end
 
 function RemoveTetrisBlockData(block, matches)
