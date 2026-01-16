@@ -1178,9 +1178,9 @@ function CreateEffectOnTetrisBlock(block, match, botRow)
     Particle:SetParticleRotation(effId, Engine.Vector(0, 0, 0))
     Particle:SetParticleScale(effId, VectorFromTable(scale))
     printEz("CreateEffectOnTetrisBlock", effId)
-    local obj = AddNewObj(0, typeObjs.dropEffect, effId, 0.01, nil, 999, nil)
-    local downTime = 2.2
+    local downTime = 0.2
     local scaleTime = 0.2
+    local obj = AddNewObj(0, typeObjs.dropEffect, effId, 0.01, nil, downTime + scaleTime + 1, nil)
     local downName = "move.down"
     local scaleName = "move.scale"
     -- obj.effObj = {effId=effId, posTab=pos, speedDown= -1 * size.z / downTime, scale=VectorToTable(scale), speedScale=(dstScale.Z - scale.Z)/scaleTime}

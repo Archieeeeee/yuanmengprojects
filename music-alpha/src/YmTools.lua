@@ -1726,7 +1726,7 @@ end
 
 function printEz(...)
     local args = {...}
-    local res = ""
+    local res = string.format("%s ", GetGameTimeCur())
     for index, value in ipairs(args) do
         res = string.format("%s %s", res, value)
     end
