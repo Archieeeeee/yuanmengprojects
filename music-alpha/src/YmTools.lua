@@ -179,6 +179,11 @@ function SetObjStateFunc(obj, name, startFunc, endFunc, cycleStartFunc, actionFu
     return state
 end
 
+--用于通用向量变化
+function SetObjStateMotionObj(obj, name, motionObj)
+    GetObjState(obj, name).motionObj = motionObj
+end
+
 
 function SetObjStateNextCycle(obj, name, key, value)
     SetObjStateNextByProp(obj, "nextStates", name, key, value)
@@ -203,6 +208,10 @@ end
 ---开始状态,但有可能是重启状态
 function StartObjStateDirect(obj, state, value)
     local childState = state.states[value]
+    if childState == nil then
+        printEz("StartObjStateDirect error cant find childState", value)
+        return
+    end
     if childState.startTs == 0 then
         childState.startTs = GetGameTimeCur()
         childState.totalDelta = 0
@@ -230,6 +239,9 @@ function CheckAllObjStates(deltaTime)
 end
 
 function CheckObjStates(obj, deltaTime)
+    if obj.effObj then
+        printEz("CheckObjStatesCheckObjStates", deltaTime)
+    end
     -- print("CheckObjStates ", MiscService:Table2JsonStr(obj))
     if (obj.states ~= nil) and (obj.states.objStates ~= nil) then
         for key, childState in pairs(obj.states.objStates.states) do
@@ -267,12 +279,12 @@ function CheckSingleObjStateCur(cs, deltaTime, obj)
     end
     --开始过但是超时判断结束
     if cs.startTs > 0 and cs.totalTime ~= 0 and cs.totalDelta >= cs.totalTime then
-        ObjStateEnd(obj, cs)
+        ObjStateEnd(obj, cs, deltaTime)
         return
     end
     --开始过但是超过循环次数判断结束
     if cs.startTs > 0 and cs.numLimit ~= 0 and cs.count > cs.numLimit then
-        ObjStateEnd(obj, cs)
+        ObjStateEnd(obj, cs, deltaTime)
         return
     end
 
@@ -283,36 +295,36 @@ function CheckSingleObjStateCur(cs, deltaTime, obj)
             delay = cs.initDelay
         end
         if cs.cycleDelta >= delay then
-            ObjStateAction(obj, cs)
+            ObjStateAction(obj, cs, deltaTime)
         end
     end
     --检查action结束
     if cs.actionTs > 0 then
         cs.actionDelta = cs.actionDelta + deltaTime
         if cs.cycleTime ~= 0 and cs.actionDelta >= cs.cycleTime then
-            ObjStateCycleEnd(obj, cs)
+            ObjStateCycleEnd(obj, cs, deltaTime)
         else
             ObjStateActionUpdate(obj, cs, deltaTime)
         end
     end
 end
 
-function ObjStateEnd(obj, state)
+function ObjStateEnd(obj, state, deltaTime)
     state.endTs = GetGameTimeCur()
     if state.endFunc ~= nil then
-        state.endFunc(obj, state)
+        state.endFunc(obj, state, deltaTime)
     end
     UpdateObjStateNext(state, state.nextStatesEnd, obj)
 end
 
-function ObjStateAction(obj, state)
+function ObjStateAction(obj, state, deltaTime)
     state.actionTs = GetGameTimeCur()
     if state.actionFunc ~= nil then
-        state.actionFunc(obj, state)
+        state.actionFunc(obj, state, deltaTime)
     end
 end
 
-function ObjStateCycleEnd(obj, state)
+function ObjStateCycleEnd(obj, state, deltaTime)
     UpdateObjStateNext(state, state.nextStates, obj)
 end
 
@@ -509,6 +521,8 @@ function DoAction(msg)
     _G[msg.funcName](msg.funcArg)
 end
 
+--- updateFunc deltaTime, obj
+--- destroyFunc deltaTime, obj
 function AddNewObj(groupType, type, id, updateDur, updateFunc, lifeDur, destroyFunc)
     local obj = {id=id, group=groupType, type=type, updateDur=updateDur, updateFunc=updateFunc, lastUpdateTs=0,
         posSynced = false,
@@ -1150,11 +1164,13 @@ function CanRunOnlyOnServer()
 end
 
 
+---objUpdateFunc objDestroyFunc (deltaTime, obj)
+---actionFunc updateFunc stateEndFunc(objParent, state, deltaTime)
 function NewMotionParam(id, objId, objGroup, objType, motionObj, objUpdateFunc, objDestroyFunc, totalTime, cycleTime,
-    initialDelay, cycleNum, cycleDelay, actionFunc, updateFunc)
+    initialDelay, cycleNum, cycleDelay, actionFunc, updateFunc, stateEndFunc)
     return {id=id, objId=objId, objGroup=objGroup, objType=objType, motionObj=motionObj, objUpdateFunc=objUpdateFunc,
         objDestroyFunc=objDestroyFunc, totalTime=totalTime, cycleTime=cycleTime, initialDelay=initialDelay, cycleNum=cycleNum,
-        cycleDelay=cycleDelay, actionFunc=actionFunc, updateFunc=updateFunc}
+        cycleDelay=cycleDelay, actionFunc=actionFunc, updateFunc=updateFunc, stateEndFunc=stateEndFunc}
 end
 
 
@@ -1169,7 +1185,7 @@ function BuildMotionObj(param)
     --todo 根据cycle time num isBackAndForth 重新计算totalTime = math.max(totalTime, num * cycle)
     AddObjState(obj, "mu.move")
     SetObjState(obj, "mu.move", totalTime, cycleTime, param.initialDelay)
-    SetObjStateFunc(obj, "mu.move", nil, nil, nil, param.actionFunc, param.updateFunc)
+    SetObjStateFunc(obj, "mu.move", nil, param.stateEndFunc, nil, param.actionFunc, param.updateFunc)
     if param.isBackAndForth then
         AddObjState(obj, "mu.moveBack")
         SetObjState(obj, "mu.moveBack", totalTime, cycleTime, 0)
@@ -1202,22 +1218,37 @@ function SetElementVecByMotionType(eid, type, vec)
     end
 end
 
+---postUpdateFunc (objParent, state, deltaTime, res)  res = {needUpdate=true}
+--- syncDstDoneFunc(objParent, state, deltaTime, res)
 function BuildMotionObjVecDst(dstVec, dstObj, dstVecName, curObj, curVecName, totalTime, postUpdateFunc, syncDstDoneFunc)
     local motionObj = {isSyncDstDone=false, objDestroyFunc=nil, eleMotionType=CfgTools.MotionUnit.Types.Pos, dstVec=dstVec, dstObj=dstObj,
     dstVecName=dstVecName, curObj=curObj, curVecName=curVecName, speedVec=nil, postUpdateFunc=postUpdateFunc, syncDstDoneFunc=syncDstDoneFunc}
-    CheckMotionObjSpeedVec(motionObj, totalTime, 0)
+    CheckMotionObj(motionObj, totalTime, 0)
     -- MotionVecUpdate({motionObj=motionObj}, nil, deltaTime)
     return motionObj
 end
 
-function CheckMotionObjSpeedVec(mobj, totalTime, cycleTime)
+function CheckMotionObj(mobj, totalTime, cycleTime)
     local speedVec = mobj.speedVec
+    --handle dstVec
+    if mobj.dstVec ~= nil then
+        mobj.dstVec = VectorTableEnsure(mobj.dstVec)
+    end
+    --
+    if mobj.syncDstDoneFunc then
+        mobj.isSyncDstDone = true
+    end
+    --检查
+    if speedVec == nil and mobj.dstVec == nil then
+        printEz("CheckMotionObjSpeedVec error dstVec nil", mobj.id, mobj.eid)
+        return
+    end
     if speedVec == nil then
         local curVec = nil
-        if mobj.dstVec ~= nil and mobj.eid ~= nil then
-            curVec = VectorTableEnsure(GetElementVecByMotionType(mobj.eid, mobj.eleMotionType))
-        elseif mobj.curObj ~= nil then
+        if mobj.curObj ~= nil then
             curVec = VectorTableEnsure(mobj.curObj[mobj.curVecName])
+        elseif mobj.eid ~= nil then
+            curVec = VectorTableEnsure(GetElementVecByMotionType(mobj.eid, mobj.eleMotionType))
         end
         --运动时间用单程时间
         local mtime = cycleTime
@@ -1226,16 +1257,16 @@ function CheckMotionObjSpeedVec(mobj, totalTime, cycleTime)
             mtime = totalTime
         end
         if mtime == nil or mtime == 0 then
-            printEz("BuildMotionVec error no time set for element", mobj.eid)
+            printEz("CheckMotionObjSpeedVec error no time set for element", mobj.eid)
         else
             local distance = UMath:GetDistance(VectorFromTable(curVec), VectorFromTable(mobj.dstVec))
             speedVec = NewVectorTable(distance/mtime, 0, 0)
-            printEz("BuildMotionVecspeedVec", MiscService:Table2JsonStr(curVec), MiscService:Table2JsonStr(speedVec))
+            printEz("CheckMotionObjSpeedVec", MiscService:Table2JsonStr(curVec), MiscService:Table2JsonStr(speedVec))
             mobj.speedVec = speedVec
         end
     end
     if speedVec == nil then
-        printEz("BuildMotionVec error speedVec nil", mobj.id, mobj.eid)
+        printEz("CheckMotionObjSpeedVec error speedVec nil", mobj.id, mobj.eid)
         return
     end
 end
@@ -1244,15 +1275,44 @@ end
 function BuildMotionVec(id, objAdd, eid, eleMotionType, dstVec, dstObj, dstVecName, curObj, curVecName, speedVec, isSyncDstDone, postUpdateFunc, objDestroyFunc, initialDelay, totalTime, cycleNum, cycleTime, cycleDelay, isBackAndForth)
     id = id or GetNewMotionId(toolCommonVars.names.commonMotion)
     local motionObj = {id=id, objAdd=objAdd, eid=eid, isSyncDstDone=isSyncDstDone, objDestroyFunc=objDestroyFunc, eleMotionType=eleMotionType, dstVec=dstVec, dstObj=dstObj, dstVecName=dstVecName, curObj=curObj, curVecName=curVecName, speedVec=speedVec, postUpdateFunc=postUpdateFunc}
-    CheckMotionObjSpeedVec(motionObj, totalTime, cycleTime)
+    CheckMotionObj(motionObj, totalTime, cycleTime)
     local param = NewMotionParam(id, id, ObjGroups.MotionUnit, 0, motionObj, UpdateMotionUnit, DestroyMotionVec,
-        totalTime, cycleTime, initialDelay, cycleNum, cycleDelay, MotionObjAction, MotionVecUpdate)
+        totalTime, cycleTime, initialDelay, cycleNum, cycleDelay, MotionObjAction, MotionVecUpdate, MotionVecStateEnd)
     local obj = BuildMotionObj(param)
     return obj
 end
 
+function GetMotionObjFromParent(objParent, state)
+    local obj = nil
+    if state ~= nil then
+        obj = state.motionObj
+    end
+    if obj == nil then
+        obj = objParent.motionObj
+    end
+    if obj == nil then
+        printEz("GetMotionObjFromParent error cant find motionObj")
+    end
+    return obj
+end
+
+function MotionVecStateEnd(objParent, state, deltaTime)
+    local obj = GetMotionObjFromParent(objParent, state)
+    if obj.isSyncDstDone then
+        local dstVec = VectorTableEnsure(obj.dstVec)
+        if obj.dstObj then
+            dstVec = VectorTableEnsure(obj.dstObj[obj.dstVecName])
+        end
+        local newVec = NewVectorTableCopy(dstVec)
+        UpdateMotionNewVecHandle(obj, newVec)
+    end
+    if obj.syncDstDoneFunc then
+        obj.syncDstDoneFunc(objParent, state, deltaTime, {needUpdate = true, stateEnd=true})
+    end
+end
+
 local function PostMotionVecUpdate(objParent, state, deltaTime, res)
-    local obj = objParent.motionObj
+    local obj = GetMotionObjFromParent(objParent, state)
     if not obj.postUpdateFunc then
         return
     end
@@ -1261,7 +1321,8 @@ local function PostMotionVecUpdate(objParent, state, deltaTime, res)
 end
 
 function MotionVecUpdate(objParent, state, deltaTime)
-    local obj = objParent.motionObj
+    --优先使用状态里的参数
+    local obj = GetMotionObjFromParent(objParent, state)
     -- printEz("MotionVecUpdate", MiscService:Table2JsonStr(obj))
     local res = {needUpdate=true}
     --获取增量数值
@@ -1338,7 +1399,7 @@ function AddMotionToElement(eid, name, motionType, motionVector, isIncrement, in
     local id = string.format("%s-%s", eid, name)
     local motionObj = {id=id, eid=eid, name=name, type=motionType, vec=VectorToTable(motionVector)}
     local param = NewMotionParam(id, id, ObjGroups.MotionUnit, 0, motionObj, UpdateMotionUnit, DestroyMotionUnit,
-        totalTime, cycleTime, initialDelay, cycleNum, cycleDelay, MotionObjAction, MotionObjUpdate)
+        totalTime, cycleTime, initialDelay, cycleNum, cycleDelay, MotionObjAction, MotionObjUpdate, nil)
     local obj = BuildMotionObj(param)
     return obj
 end
@@ -1378,8 +1439,9 @@ function LimitRotateNum(num)
     return num
 end
 
-function MotionObjAction(obj, state)
-    print("MotionObjAction start ", MiscService:Table2JsonStr(obj))
+function MotionObjAction(objParent, state, deltaTime)
+    -- print("MotionObjAction start ", MiscService:Table2JsonStr(obj))
+    local obj = GetMotionObjFromParent(objParent, state)
 end
 
 function UpdateMotionUnit(deltaTime, obj)
@@ -1396,18 +1458,6 @@ end
 
 --结束时同步最终数据
 function DestroyMotionVec(deltaTime, objParent)
-    local obj = objParent.motionObj
-    if obj.isSyncDstDone then
-        local dstVec = obj.dstVec
-        if obj.dstObj then
-            dstVec = obj.dstObj[obj.dstVecName]
-        end
-        local newVec = NewVectorTableCopy(dstVec)
-        UpdateMotionNewVecHandle(obj, newVec)
-        if obj.syncDstDoneFunc then
-            obj.syncDstDoneFunc(objParent, deltaTime)
-        end
-    end
     DestroyMotionUnit(deltaTime, objParent)
 end
 
