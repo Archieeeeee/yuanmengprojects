@@ -38,6 +38,7 @@ local tetrisMatchs = {}
 local tetrisMatchsLocal = {}
 local varPool = {mergeActions={}}
 local tetrisDataLocal = {blockProtos={itself={}, preview={}}}
+local testObj = {id=0, texts={}, delays={}}
 
 
 function CallbackCharCreated(playerId)
@@ -59,7 +60,7 @@ end
 function GamePreInitAll()
     RegisterEventsAll()
 
-    AddTimerTask(TaskNames.task1s, "GenTetrisDropBlock", 2, 3, GenTetrisDropBlock)
+    AddTimerTask(TaskNames.task1s, "GenTetrisDropBlock", 2, 1, GenTetrisDropBlock)
     AddTimerTask(TaskNames.task1s, "MergeTetrisBlockDataTask", 0, 0.01, MergeTetrisBlockDataTask)
 end
 
@@ -86,7 +87,7 @@ function InitVarsServerOnStart()
 end
 
 function PostInitClientOnStart()
-    
+    -- TimerManager:AddLoopTimer(6, DoTestQuest)
 end
 
 function PostInitServerOnStart()
@@ -113,6 +114,11 @@ function GameInitVars()
     cfgElements.effLiquidLight = {id=1102015001001251, size=Engine.Vector(1.2, 1.2, 6)}
     cfgElements.effGoldAir = {id=1102015001003330, size=Engine.Vector(4, 4, 15.01)}
     cfgElements.effAurora = {id=1102004001001001, size=Engine.Vector(3, 10, 5.51)}
+
+    --将大小换算成厘米
+    for key, value in pairs(cfgElements) do
+        value.size = VectorScale(value.size, 100)
+    end
 
     posOrg = Element:GetPosition(platformId)
     LoadGlobalVarsFromData(cfgDataNames)
@@ -685,7 +691,7 @@ function InitTetrisBlockEntitySingle(block, match, isPreview, res)
     end
     CopyElementAndChildrenFull(peid, cfgCopyProps, awCallback, false,
         VectorFromTable(blockCenterPosTab), false, nil,
-        nil, nil, nil, nil, nil)
+        nil, nil, nil, BuildElementStateEzNoPhyNoColli(0), BuildElementStateEzNoPhyNoColli(0))
 end
 
 function UpdateTetrisBlockLocalDataParts(block, awId, isPreview)
@@ -754,7 +760,7 @@ function CreateTetrisBlockEntitySingle(blockCfg, cfg)
     end
     CopyElementAndChildrenFull(elesInScene.airwall, cfgCopyProps, awCallback, false,
         VectorFromTable(blockCenterPosTab), false, nil,
-        cfgElements.airWall.size, 100, 100, 100, nil)
+        cfgElements.airWall.size, Engine.Vector(100, 100, 100),  nil, nil, nil)
 end
 
 ---给方块创建四个部件 为了方便旋转,将组件绑定到空气墙上,空气墙放在格子中心
@@ -770,7 +776,7 @@ function AddPartEntityToTetrisBlock(blockCfg, cfg, awId, row, col)
     end
     CopyElementAndChildrenFull(elesInScene.airwall, cfgCopyProps, callback, false,
         VectorFromTable(awPos), false, nil,
-        cfgElements.airWall.size, 100, 100, 100, nil)
+        cfgElements.airWall.size, NewVectorTable(100, 100, 100), nil, nil, nil)
 end
 
 function AddPartEntityToPartParent(blockCfg, cfg, pid, row, col)
@@ -784,7 +790,7 @@ function AddPartEntityToPartParent(blockCfg, cfg, pid, row, col)
     end
     CopyElementAndChildrenFull(cfg.partEid, cfgCopyProps, callback, false,
         VectorFromTable(bpos), false, nil,
-        cfg.orgSize, cfg.size.x, cfg.size.y, cfg.size.z, nil) 
+        cfg.orgSize, cfg.size, nil, nil, nil)
 end
 
 ---给方块创建四个部件 为了方便旋转,将组件绑定到空气墙上,空气墙放在格子中心
@@ -1559,25 +1565,26 @@ end
 
 function HandleTetrisBlockMergeFailed(block, destroyEntity)
     if destroyEntity then
-        for row, rowData in pairs(block.localData.parts) do
-            for col, value in pairs(rowData) do
-                print("RemoveTetrisSolidetBlock destroyEntity ", value.eid)
-                Element:Destroy(value.eid)
-            end
-        end
+        -- for row, rowData in pairs(block.localData.parts) do
+        --     for col, value in pairs(rowData) do
+        --         print("RemoveTetrisSolidetBlock destroyEntity ", value.eid)
+        --         Element:Destroy(value.eid)
+        --     end
+        -- end
+        DestroyElementAndChildren(block.localData.awId)
     end
 end
 
-function RemoveTetrisSolidetBlock(block, matches, destroyEntity)
-    local blockLocal = matches[block.matchId].solidetBlocks[block.objId]
-    if blockLocal == nil then
-        printEz("RemoveTetrisSolidetBlock blockLocal nil")
-        return
-    end
-    matches[block.matchId].solidetBlocks[block.objId] = nil
-    HandleTetrisBlockMergeFailed(block, destroyEntity)
-    return blockLocal
-end
+-- function RemoveTetrisSolidetBlock(block, matches, destroyEntity)
+--     local blockLocal = matches[block.matchId].solidetBlocks[block.objId]
+--     if blockLocal == nil then
+--         printEz("RemoveTetrisSolidetBlock blockLocal nil")
+--         return
+--     end
+--     matches[block.matchId].solidetBlocks[block.objId] = nil
+--     HandleTetrisBlockMergeFailed(block, destroyEntity)
+--     return blockLocal
+-- end
 
 function SolidifyTetrisBlockEntity(block, posTabSrc)
     block.posTab = NewVectorTable(GetTetrisBlockPosX(block, posTabSrc), posTabSrc.y, posTabSrc.z + (block.curRow -1) * cfgTetris.blockSize)
@@ -1844,7 +1851,7 @@ function InitTetrisBoardEntity(action)
     end
     CopyElementAndChildrenFull(elesInScene.cubeBlackWhiteW, cfgCopyProps, callback, false,
         VectorFromTable(posTab), false, nil,
-        cfgElements.cube.size, sizeTab.x, sizeTab.y, sizeTab.z, nil)
+        cfgElements.cube.size, sizeTab, nil, BuildElementStateEzNoPhyNoColli(0), BuildElementStateEzNoPhyNoColli(0))
 
 
 end
@@ -2122,8 +2129,8 @@ function GenAirWall(callback)
     -- SetElementReplicatesAndChildren(337, false)
     -- 337  331
     CopyElementAndChildrenFull(331, cfgCopyProps, awCallback, true, genPos,
-    false, nil, cfgElements.airWall.size,
-    198, 198, 100, nil)
+    false, nil, cfgElements.airWall.size, Engine.Vector(198, 198, 100),
+    nil, nil, nil)
 
     
     -- CopyElementAndChildrenFull(341, cfgCopyProps, function ()
@@ -2157,8 +2164,8 @@ function GenBrickDebris(pid, locX, locY, done)
 
     -- elesInScene.brick 341
     CopyElementAndChildrenFull(elesInScene.brick, cfgCopyProps, callback, true, pos,
-    false, nil, cfgElements.cube.size,
-    100, 200, 100, nil)
+    false, nil, cfgElements.cube.size, Engine.Vector(100, 200, 100),
+    nil, nil, nil)
 
     -- CopyElementAndChildrenFull(341, cfgCopyProps, callback, true, pos,
     -- false, true, cfgElements.cube.size,
@@ -2175,8 +2182,7 @@ function PrepareBrick()
     -- SpawnElementToScene(1101002001038000, posFarthest, callback, cfgElements.cube.size, 100, 100, 100)
     -- SetElementReplicatesAndChildren(334, false)
     CopyElementAndChildrenFull(334, cfgCopyProps, callback, true, pos,
-    false, nil, nil,
-    0, 0, 0, nil)
+    false, nil, nil, nil, nil, nil, nil)
 end
 
 --生成砖头
@@ -2306,8 +2312,7 @@ function GenBlockBrick()
     end
     -- CopyElementAndChildrenServerEz(protos.blockBrick.id, cfgCopyProps, callback, pos)
     CopyElementAndChildrenFull(protos.blockBrick.id, cfgCopyProps, callback, true, pos,
-    true, false,
-    nil, 0, 0, 0, nil)
+    true, false, nil, nil, nil, nil, nil)
 end
 
 function GenBlockUnknown(withMotion)
@@ -2515,7 +2520,10 @@ function RegisterEventsAll()
     System:RegisterEvent(Events.ON_PLAYER_JOIN_MIDWAY, OnPlayerJoinMidway)
 end
 
-local function DoTest()
+function DoTest()
+    -- if 1 == 1 then
+    --     return
+    -- end
     local obja = {3, "aaa", [5]=888, m=3, ab={3,89}, as={3, {2, 1, 0}}, atp={a=3, ab="hhsdq", c={2, "ss"}}}
     local objb = {3, "aaa", [5]=888, m="dqk2888", ab={3,89}, as={3, {2, 1, 0}}, atp={a=3, ab="akdhk2", c={2, "ss"}}}
     local objaCopy = MergeTables(obja, objb, {"ab"})
@@ -2524,13 +2532,25 @@ local function DoTest()
     objaCopy = MergeTables(obja, objb, {"m", "ab"})
     print("DoTest 2")
     Log:PrintTable(objaCopy)
+
+end
+
+function DoTestQuest()
+    printEz("DoTestAnswer start", testObj.id)
+    testObj.delays[Stringfy(testObj.id)] = {start=GetGameTimeCur()}
+    SendTransActionToServer("DoTestAnswer", testObj, GetLocalPlayerId())
+end
+
+function DoTestAnswer(msg)
+    local delay = GetGameTimeCur() - testObj.delays[Stringfy(msg.id)].start
+    printEz("DoTestAnswer end", msg.id, delay, GetTablePairLen(msg.texts))
+    testObj.id = testObj.id + 1
+    table.insert(testObj.texts, MiscService:Table2JsonStr(testObj))
 end
 
 function OnPlayerEnter(playerId)
     playerId = Stringfy(playerId)
     players[playerId] = {id=playerId}
-
-    -- DoTest()
 end
 
 function OnPlayerLeave(playerId)

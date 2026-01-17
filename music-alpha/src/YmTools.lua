@@ -239,9 +239,9 @@ function CheckAllObjStates(deltaTime)
 end
 
 function CheckObjStates(obj, deltaTime)
-    if obj.effObj then
-        printEz("CheckObjStatesCheckObjStates", deltaTime)
-    end
+    -- if GetObjState(obj, xxx) then
+    --     printEz("CheckObjStatesCheckObjStates", deltaTime)
+    -- end
     -- print("CheckObjStates ", MiscService:Table2JsonStr(obj))
     if (obj.states ~= nil) and (obj.states.objStates ~= nil) then
         for key, childState in pairs(obj.states.objStates.states) do
@@ -652,12 +652,14 @@ end
 
 --计算缩放到指定大小需要的缩放参数
 function GetScaleDstCalc(dstSize, orgSize)
+    dstSize = VectorTableEnsure(dstSize)
+    orgSize = VectorTableEnsure(orgSize)
     return Engine.Vector(dstSize.x/orgSize.x, dstSize.y/orgSize.y, dstSize.z/orgSize.z)
 end
 
 --计算缩放到指定大小需要的缩放参数
 function GetScaleDstCalcXyz(orgSize, x, y, z)
-    return Engine.Vector(x/100.0/orgSize.x, y/100.0/orgSize.y, z/100.0/orgSize.z)
+    return Engine.Vector(x/orgSize.x, y/orgSize.y, z/orgSize.z)
 end
 
 function GetElementChildrenSize(eid, resTable)
@@ -681,32 +683,37 @@ end
 
 function CopyElementAndChildrenServerEz(eid, props, callbackDone, dstPos)
     --syncPosRemote多数情况仍然是必须的,只不过如果立即运动仍然需要先明确设置位置因为远程调用可能尚未完成
-    local param = BuildCopyEleParam(true, dstPos, true, false, nil)
+    local param = BuildCopyEleParam(true, dstPos, true, false, nil, nil, nil)
     CopyElementAndChildrenDetailed(eid, props, callbackDone, param)
 end
 
 function CopyElementAndChildrenServerEzScale(eid, props, callbackDone, dstPos, orgSize, x, y, z, scaleNum)
-    local param = BuildCopyEleParam(true, dstPos, true, false, nil)
-    SetCopyEleParamScale(param, orgSize, x, y, z, scaleNum)
-    CopyElementAndChildrenDetailed(eid, props, callbackDone, param)
-end
-
-function CopyElementAndChildrenFull(eid, props, callbackDone, replicates, dstPos, syncStateRemote, postSetReplicates, orgSize, x, y, z, scaleNum)
-    local param = BuildCopyEleParam(replicates, dstPos, syncStateRemote, postSetReplicates, nil)
-    SetCopyEleParamScale(param, orgSize, x, y, z, scaleNum)
-    CopyElementAndChildrenDetailed(eid, props, callbackDone, param)
-end
-
-function BuildCopyEleParam(replicates, dstPos, syncStateRemote, postSetReplicates, dstScale)
-    return {replicates = replicates, dstPos = dstPos, syncStateRemote = syncStateRemote, postSetReplicates = postSetReplicates, dstScale = dstScale}
-end
-
-function SetCopyEleParamScale(param, orgSize, x, y, z, scaleNum)
-    if orgSize ~= nil then
-        param.dstScale = {orgSize=orgSize, x=x, y=y, z=z}
+    local dstScale = nil
+    if scaleNum ~= nil then
+        dstScale = Engine.Vector(scaleNum, scaleNum, scaleNum)
     end
-    if scaleNum ~= nil and scaleNum ~= 0 then
-        param.dstScale = {scaleNum = scaleNum}
+    local param = BuildCopyEleParam(true, dstPos, true, false, dstScale, nil, nil)
+    if orgSize ~= nil then
+        SetCopyEleParamScale(param, orgSize, Engine.Vector(x, y, z))
+    end
+    CopyElementAndChildrenDetailed(eid, props, callbackDone, param)
+end
+
+function CopyElementAndChildrenFull(eid, props, callbackDone, replicates, dstPos, syncStateRemote, postSetReplicates, orgSize, dstSize, dstScale, rootState, childState)
+    local param = BuildCopyEleParam(replicates, dstPos, syncStateRemote, postSetReplicates, dstScale, rootState, childState)
+    SetCopyEleParamScale(param, orgSize, dstSize)
+    CopyElementAndChildrenDetailed(eid, props, callbackDone, param)
+end
+
+function BuildCopyEleParam(replicates, dstPos, syncStateRemote, postSetReplicates, dstScale, rootState, childState)
+    local param = {replicates = replicates, dstPos = dstPos, syncStateRemote = syncStateRemote, postSetReplicates = postSetReplicates, dstScale = dstScale,
+    rootState=rootState, childState=childState}
+    return param
+end
+
+function SetCopyEleParamScale(param, orgSize, dstSize)
+    if orgSize ~= nil then
+        param.dstScale = GetScaleDstCalc(dstSize,orgSize)
     end
 end
 
@@ -743,11 +750,21 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
     -- print("CopyElementAndChildrenHandle start ", MiscService:Table2JsonStr(srcTable), " ", eid)
     local callback = function(copyId)
         local genNum = 0
-        if srcTable.copyRootId == nil then
+        local isRootCopy = (srcTable.copyRootId == nil)
+        if isRootCopy then
             srcTable.copyRootId = copyId
             srcTable.srcRootId = eid
+            --设置父节点状态
+            if srcTable.rootState then
+                SyncElementStateById(copyId, srcTable.rootState)
+            end
         else
             genNum = CustomProperty:GetCustomProperty(srcTable.copyRootId, "genChildNum", CustomProperty.PROPERTY_TYPE.Number)
+            --设置子节点状态
+            if srcTable.childState then
+                -- printEz("CopyElementAndChildrenHandlechildState", copyId, MiscService:Table2JsonStr(srcTable.childState))
+                SyncElementStateById(copyId, srcTable.childState)
+            end
         end
         CustomProperty:SetCustomProperty(srcTable.copyRootId, "genChildNum", CustomProperty.PROPERTY_TYPE.Number, genNum + 1)
         if parentId ~= nil then
@@ -776,10 +793,8 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
                 ServerLog("copy ele set state dstScale ServerLog ", srcTable.copyRootId)
                 SetElementStateDesc(state, "copy ele set state dstScale")
                 toSetState = true
-                if srcTable.dstScale.orgSize ~= nil then
-                    SetElementStateScaleVec(state, GetScaleDstCalcXyz(srcTable.dstScale.orgSize, srcTable.dstScale.x, srcTable.dstScale.y, srcTable.dstScale.z))
-                else
-                    SetElementStateScaleNum(state, srcTable.dstScale.scaleNum)
+                if srcTable.dstScale ~= nil then
+                    SetElementStateScaleVec(state, srcTable.dstScale)
                 end
             end
 
@@ -980,6 +995,14 @@ function BuildElementState(elementId)
     return {eid=elementId}
 end
 
+--快捷设置无碰撞,无物理的状态
+function BuildElementStateEzNoPhyNoColli(eid)
+    local state = BuildElementState(eid)
+    SetElementStateColli(state, false)
+    SetElementStatePhy(state, false, false, false)
+    return state
+end
+
 function SetElementStateColor(state, idx, color)
     if state.colors == nil then
         state.colors = {}
@@ -1014,11 +1037,11 @@ end
 
 
 function SetElementStatePos(state, pos)
-    state.pos = VectorToTable(pos)
+    state.pos = VectorTableEnsure(pos)
 end
 
 function SetElementStateScaleVec(state, scaleVec)
-    state.scale = {scaleVec = VectorToTable(scaleVec)}
+    state.scale = {scaleVec = VectorTableEnsure(scaleVec)}
 end
 
 function SetElementStateScaleNum(state, scaleNum)
@@ -1180,7 +1203,9 @@ function BuildMotionObj(param)
     if totalTime ~= 0 and totalTime < param.initialDelay then
         printEz("SetObjState error totalTime less than delay")
     end
-    local obj = AddNewObj(param.objGroup, param.objType, param.objId, 0, param.objUpdateFunc, totalTime, param.objDestroyFunc)
+    --比motion多一秒以保证执行
+    local objTime = totalTime + 1
+    local obj = AddNewObj(param.objGroup, param.objType, param.objId, 0, param.objUpdateFunc, objTime, param.objDestroyFunc)
     obj.motionObj = param.motionObj
     --todo 根据cycle time num isBackAndForth 重新计算totalTime = math.max(totalTime, num * cycle)
     AddObjState(obj, "mu.move")
@@ -1298,6 +1323,9 @@ end
 
 function MotionVecStateEnd(objParent, state, deltaTime)
     local obj = GetMotionObjFromParent(objParent, state)
+    -- if objParent ~= nil and objParent.id and string.find(objParent.id, "dropRemove") then
+    --     printEz("MotionVecStateEnd", objParent.id, deltaTime)
+    -- end
     if obj.isSyncDstDone then
         local dstVec = VectorTableEnsure(obj.dstVec)
         if obj.dstObj then
@@ -1321,6 +1349,9 @@ local function PostMotionVecUpdate(objParent, state, deltaTime, res)
 end
 
 function MotionVecUpdate(objParent, state, deltaTime)
+    -- if objParent ~= nil and objParent.id and string.find(objParent.id, "dropRemove") then
+    --     printEz("MotionVecUpdateMotionVecUpdate", objParent.id, deltaTime)
+    -- end
     --优先使用状态里的参数
     local obj = GetMotionObjFromParent(objParent, state)
     -- printEz("MotionVecUpdate", MiscService:Table2JsonStr(obj))
@@ -1516,6 +1547,10 @@ end
 
 function VectorTableScale(tab, num)
     return {x = tab.x * num, y = tab.y * num, z = tab.z * num}
+end
+
+function VectorScale(vec, num)
+    return Engine.Vector(vec.X * num, vec.Y * num, vec.Z * num)
 end
 
 function Stringfy(value)
