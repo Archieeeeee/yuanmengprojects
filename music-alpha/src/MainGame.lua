@@ -39,6 +39,7 @@ local tetrisMatchsLocal = {}
 local varPool = {mergeActions={}}
 local tetrisDataLocal = {blockProtos={itself={}, preview={}}}
 local testObj = {id=0, texts={}, delays={}}
+local constantTetris = {matchActions={StartTetrisMatchClient="StartTetrisMatchClient", NewTetrisMatchData="NewTetrisMatchData", MergeTetrisBlockResOnClient="MergeTetrisBlockResOnClient"}}
 
 
 function CallbackCharCreated(playerId)
@@ -240,7 +241,8 @@ function GenSingleTetrisDropBlock(match, player)
     local block = NewTetrisBlock(math.random(1, 7), 1)
     block.matchId = match.id
     block.playerId = player.id
-    block.objId = string.format("tblock-%s-%s-%s", match.id, player.id, block.id)
+    -- block.objId = string.format("tblock-%s-%s-%s", match.id, player.id, block.id)
+    block.objId = block.id
     ServerLog("GenSingleTetrisDropBlock ", block.objId)
     block.dropSpeed = match.dropSpeed
     --init postab
@@ -471,12 +473,19 @@ function InitTetrisBlockCfgCol(cfgBlock)
     cfgBlock.cfg.colEnd = colEnd
 end
 
+function NewBoardPartGetInit(isClient)
+    if isClient then
+        return {v=0, localData={}}
+    end
+    return {v=0}
+end
+
 ---初始化单个棋盘
 function InitTetrisBoard(board, rowNum, columnNum)
     for i = 1, rowNum do
         local row = {}
         for j = 1, columnNum do
-            table.insert(row, {val=0, localData={}})
+            table.insert(row, NewBoardPartGetInit(false))
         end
         table.insert(board.parts, row)
     end
@@ -543,6 +552,13 @@ end
 
 function SyncTetrisMatchDataNewMatch(action)
     tetrisMatchsLocal[action.match.id] = action.match
+    --创建localData
+    local board = action.match.board
+    for index, rowVal in ipairs(board.parts) do
+        for index, value in ipairs(rowVal) do
+            value.localData = {}
+        end
+    end
 end
 
 --更新对局但不包括玩家信息
@@ -630,7 +646,7 @@ end
 
 function NewTetrisBlockEntity(action)
     SyncTetrisMatchDataNewBlock(action)
-    InitTetrisBlockEntity(GetTetrisLocalBlock(action.block), action.match)
+    InitTetrisBlockEntity(GetTetrisLocalBlock(action.block), GetMatchLocalByBlock(action.block))
 end
 
 function GetTetrisBoardRowNum(board)
@@ -1095,7 +1111,7 @@ function CheckTetrisBoardIsOverlap(blockRow, blockColumn, board, rowNum, colNum,
                 local boardRow = board.parts[row + blockRow - 1]
                 if boardRow ~= nil then
                     local boardVal = boardRow[col + blockColumn - 1]
-                    if boardVal ~= nil and boardVal.val ~=0 and blockParts[row][col] ~= 0 then
+                    if boardVal ~= nil and boardVal.v ~=0 and blockParts[row][col] ~= 0 then
                         isOverlap = true
                     end
                 end
@@ -1136,6 +1152,7 @@ function CheckTetrisBlockMerge(match, block, obj, isTest)
     if isOverlap == false then
         return true
     end
+    -- printEz("CheckTetrisBoardIsOverlaptrue need merge", blockRow, blockColumn, MiscService:Table2JsonStr(board))
     local mergeRow = (blockRow + 1)
     block.mergeRow = mergeRow
     SolidifyTetrisBlockSimulateAll(block, mergeRow, blockColumn, match)
@@ -1287,7 +1304,7 @@ function MergeTetrisBlockToBoard(match, block, isClient)
                     return false
                 end
                 local boardPart = board.parts[boardRow][j + blockColumn - 1]
-                boardPart.val = 1
+                boardPart.v = 1
                 if not isClient then
                     boardPart.bid = block.objId
                     boardPart.bRow = i
@@ -1345,7 +1362,7 @@ function CalcTetrisBoardColumnHeights(board)
         local found = false
         board.columnHeights[col] = 0
         for row = board.rowNum, 1, -1 do
-            if found == false and board.parts[row][col].val ~= 0 then
+            if found == false and board.parts[row][col].v ~= 0 then
                 found = true
                 board.columnHeights[col] = row
             end
@@ -1364,7 +1381,7 @@ function CheckTetrisBoardFullLine(match, block)
     for row, rows in ipairs(match.board.parts) do
         local rowFull = true
         for col, value in ipairs(rows) do
-            if rowFull and value.val == 0 then
+            if rowFull and value.v == 0 then
                 rowFull = false
             end
         end
@@ -1374,8 +1391,8 @@ function CheckTetrisBoardFullLine(match, block)
         end
         rowDropNum[Stringfy(row)] = fullNum
     end
-    ServerLog("CheckTetrisBoardFullLine ", MiscService:Table2JsonStr(fullRows), " ",
-        MiscService:Table2JsonStr(rowDropNum), " ", MiscService:Table2JsonStr(match.board))
+    -- ServerLog("CheckTetrisBoardFullLine ", MiscService:Table2JsonStr(fullRows), " ",
+    --     MiscService:Table2JsonStr(rowDropNum), " ", MiscService:Table2JsonStr(match.board))
     if fullNum == 0 then
         return res
     end
@@ -1386,7 +1403,7 @@ function CheckTetrisBoardFullLine(match, block)
     --重新赋值
     TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, false, block)
     CalcTetrisBoardColumnHeights(match.board)
-    ServerLog("CheckTetrisBoardFullLinedone ", fullNum, " ", MiscService:Table2JsonStr(match.board))
+    -- ServerLog("CheckTetrisBoardFullLinedone ", fullNum, " ", MiscService:Table2JsonStr(match.board))
     return res
 end
 
@@ -1440,7 +1457,7 @@ function TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, isClient, blo
         if isClient then
             for col = 1, boardCopy.colNum do
                 local part = boardCopy.parts[row][col]
-                if part.val ~= 0 then
+                if part.v ~= 0 then
                     local eid = part.localData.eid
                     if not toRemove then
                         --下移动作
@@ -1469,7 +1486,7 @@ function TetrisBoardLineDrop(match, fullRows, fullNum, rowDropNum, isClient, blo
     --填充空白行
     for row = 1, fullNum do
         for col = 1, match.board.colNum do
-            match.board.parts[match.board.rowNum - row + 1][col] = {val=0, localData={}}
+            match.board.parts[match.board.rowNum - row + 1][col] = NewBoardPartGetInit(isClient)
         end
     end
     --掉落缓动
@@ -1656,7 +1673,7 @@ function GetTetrisBoardColumnHeight(board, col, maxRow)
     end
     for row = maxRow, 1, -1 do
         local rp = board.parts[row]
-        if rp ~= nil and rp[col] ~= nil and rp[col].val ~= 0 then
+        if rp ~= nil and rp[col] ~= nil and rp[col].v ~= 0 then
             return row
         end
     end
@@ -1904,6 +1921,10 @@ function SendTetrisActionToSinglePlayer(action, playerId)
     ServerLog("SendTetrisActionToSinglePlayer ", action.funcName, " ", playerId, " ", GetLocalPlayerId())
     --必须复制一遍防止单机模式时对象重用
     action = CopyTableShallowWithoutKey(action, "localData")
+    --处理不需要发送match数据的情况
+    if constantTetris.matchActions[action.funcName] == nil then
+        action.match = nil
+    end
     if IsStringEqual(playerId, GetLocalPlayerId()) then
         TetrisAction({action=action})
     else
