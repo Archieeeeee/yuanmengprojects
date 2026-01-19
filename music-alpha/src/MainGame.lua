@@ -223,6 +223,21 @@ function GetTetrisControlBlock()
     return nil
 end
 
+--数据端合并之后检查是否需要生成新的方块
+function CheckAndGenTetrisDropBlockWhenMerge(match, block)
+    xxx
+end
+
+function GenTetrisDropBlockDataSide(match, curBlock, playerId)
+    local id = nil
+    if curBlock then
+        id = curBlock.nid
+    end
+    local blockCfg = {t=1}
+    local id = GetIdFromPoolStringfy("dropBlockId", 0, 1, 10, nil)
+    
+end
+
 --检查活跃对局
 function GenTetrisDropBlock()
     -- ServerLog("GenTetrisDropBlock ", MiscService:Table2JsonStr(tetrisMatchs))
