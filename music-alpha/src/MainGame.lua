@@ -39,7 +39,8 @@ local tetrisMatchsLocal = {}
 local varPool = {mergeActions={}}
 local tetrisDataLocal = {blockProtos={itself={}, preview={}}}
 local testObj = {id=0, texts={}, delays={}}
-local constantTetris = {matchActions={StartTetrisMatchClient="StartTetrisMatchClient", NewTetrisMatchData="NewTetrisMatchData", MergeTetrisBlockResOnClient="MergeTetrisBlockResOnClient"}}
+local constantTetris = {matchActions={StartTetrisMatchClient="StartTetrisMatchClient", NewTetrisMatchData="NewTetrisMatchData", MergeTetrisBlockResOnClient="MergeTetrisBlockResOnClient"},
+    genBlockStratTypes={Seven="Seven", Thirteen="Thirteen", RandomEach="RandomEach"}}
 
 
 function CallbackCharCreated(playerId)
@@ -61,7 +62,7 @@ end
 function GamePreInitAll()
     RegisterEventsAll()
 
-    AddTimerTask(TaskNames.task1s, "GenTetrisDropBlock", 2, 1, GenTetrisDropBlock)
+    -- AddTimerTask(TaskNames.task1s, "GenTetrisDropBlock", 2, 1, GenTetrisDropBlock)
     AddTimerTask(TaskNames.task1s, "MergeTetrisBlockDataTask", 0, 0.01, MergeTetrisBlockDataTask)
 end
 
@@ -224,18 +225,72 @@ function GetTetrisControlBlock()
 end
 
 --数据端合并之后检查是否需要生成新的方块
-function CheckAndGenTetrisDropBlockWhenMerge(match, block)
-    xxx
+function CheckAndGenTetrisDropBlockForPlayer(match, playerId)
+    local playerData = match.players[playerId]
+    local blocks = playerData.dropBlocks
+    local res = {}
+    -- printEz("CheckAndGenTetrisDropBlockForPlayer", GetTablePairLen(blocks))
+    if GetTablePairLen(blocks) >= 5 then
+        return res
+    end
+    res.newBlocks = {matchId=match.id}
+    local cfg = {lastBlock=nil, newBlocks={}, playerData=playerData}
+    if playerData.lastBlockId then
+        cfg.lastBlock = blocks[playerData.lastBlockId]
+    end
+    GenTetrisDropBlockDataSide(cfg, match, playerId, constantTetris.genBlockStratTypes.Seven, 1)
+    EnsureTableValue(res, "newBlocks", "players")[playerId] = cfg.newBlocks
+    -- Log:PrintTable(res)
+    printEz("CheckAndGenTetrisDropBlockForPlayer done", MiscService:Table2JsonStr(res))
+    return res
 end
 
-function GenTetrisDropBlockDataSide(match, curBlock, playerId)
-    local id = nil
-    if curBlock then
-        id = curBlock.nid
+--按组策略生成
+function GenTetrisDropBlockDataSide(cfg, match, playerId, genGroup, groupNum)
+    for i = 1, groupNum, 1 do
+        GenTetrisDropBlockDataSideGroup(cfg, match, playerId, genGroup)
     end
-    local blockCfg = {t=1}
-    local id = GetIdFromPoolStringfy("dropBlockId", 0, 1, 10, nil)
-    
+end
+
+--生成单个组
+function GenTetrisDropBlockDataSideGroup(cfg, match, playerId, genGroup)
+    if genGroup == constantTetris.genBlockStratTypes.Seven then
+        local typesMap = {}
+        --利用键值对,7种乱序
+        for i = 1, 7, 1 do
+            typesMap[Stringfy(i)] = i
+        end
+        cfg.types = {}
+        for key, value in pairs(typesMap) do
+            table.insert(cfg.types, value)
+        end
+        for i = 1, 7, 1 do
+            local newBlock = GenTetrisDropBlockDataSideSingle(cfg, match, playerId, genGroup, i)
+        end
+    end
+end
+--生成组里的单个
+function GenTetrisDropBlockDataSideSingle(cfg, match, playerId, genGroup, index)
+    local lastBlock = cfg.lastBlock
+    local id = nil
+    if lastBlock then
+        id = lastBlock.nid
+    else
+        id = GetIdFromPoolStringfy("dropBlockId", 0, 1, 10, nil)
+    end
+    local nid = GetIdFromPoolStringfy("dropBlockId", 0, 1, 10, nil)
+    local blockType = 1
+    if genGroup == constantTetris.genBlockStratTypes.Seven then
+        blockType = cfg.types[index]
+    end
+    --t:类型, m:变形, nid:下一个的id, c:列
+    local column = math.random(1, cfgTetris.board.colNum / 2)
+    local newBlock = {t=blockType, m=1, id=id, nid=nid, c=column}
+    cfg.lastBlock = newBlock
+    table.insert(cfg.newBlocks, newBlock)
+    cfg.playerData.dropBlocks[id] = newBlock
+    cfg.playerData.lastBlockId = id
+    return newBlock
 end
 
 --检查活跃对局
@@ -252,10 +307,13 @@ function GenTetrisDropBlock()
     end
 end
 
-function GenSingleTetrisDropBlock(match, player)
-    local block = NewTetrisBlock(math.random(1, 7), 1)
+function GenSingleTetrisDropBlock(newBlocks, playerId, cfg)
+    local block = NewTetrisBlock(cfg.t, cfg.m, cfg.c)
+    block.id = cfg.id
+    block.nid = cfg.nid
+    local match = tetrisMatchsLocal[newBlocks.matchId]
     block.matchId = match.id
-    block.playerId = player.id
+    block.playerId = playerId
     -- block.objId = string.format("tblock-%s-%s-%s", match.id, player.id, block.id)
     block.objId = block.id
     ServerLog("GenSingleTetrisDropBlock ", block.objId)
@@ -271,10 +329,10 @@ function GenSingleTetrisDropBlock(match, player)
     block.localData.mposTab = NewVectorTableCopy(block.posTab)
     block.localData.mrotateTab = NewVectorTableCopy(block.blockCfg.rotate)
 
-    player.dropBlocks[block.id] = block
+    EnsureTableValue(match, "players", playerId, "dropBlocks")[block.id] = block
     
-    local action = NewTetrisAction(match, player, block, "NewTetrisBlockEntity")
-    SendTetrisActionToMatchPlayers(action)
+    -- local action = NewTetrisAction(match, player, block, "NewTetrisBlockEntity")
+    -- SendTetrisActionToMatchPlayers(action)
 end
 
 --查找长宽用于旋转
@@ -422,7 +480,6 @@ function GenTetrisBlockCfgByRotate(blockCfg)
     end
     copyCfg.cfg.morph = blockCfg.cfg.nextMorph
     copyCfg.cfg.rotate.x = copyCfg.cfg.rotate.x - 90
-    --xxx
     -- if copyCfg.cfg.rotate.x == (-270) then
     --     copyCfg.cfg.rotate.x = 90
     -- end
@@ -512,12 +569,12 @@ function InitTetrisBoard(board, rowNum, columnNum)
 end
 
 ---新建方块
-function NewTetrisBlock(type, morph)
+function NewTetrisBlock(type, morph, column)
     local id = GetIdFromPoolStringfy("dropBlockId", 0, 1, 10, nil)
     local block = {id=id, active=true, dropInited=false, solidet=false, localData={parts={}, preParts={}, controllable=true}}
     SetTetrisBlockCfg(block, type, morph)
     -- block.curColumn = math.floor(cfgTetris.board.colNum / 2)
-    block.curColumn = math.random(1, cfgTetris.board.colNum - 4)
+    block.curColumn = column
     return block
 end
 
@@ -574,6 +631,8 @@ function SyncTetrisMatchDataNewMatch(action)
             value.localData = {}
         end
     end
+    --创建方块
+    GenNewTetrisBlocksLocal(action)
 end
 
 --更新对局但不包括玩家信息
@@ -759,7 +818,7 @@ function CreateTetrisBlockEntitySingle(blockCfg, cfg)
     --用于检测实体完成
     local posTab = cfg.posTab
     local blockCenterPosTab = GetTetrisBlockCenterPosTabFull(blockCfg, posTab)
-    print("InitTetrisBlockEntityProtoSingle  xxx", blockCfg.cfg.type, MiscService:Table2JsonStr(blockCenterPosTab))
+    printEz("InitTetrisBlockEntityProtoSingle", blockCfg.cfg.type, MiscService:Table2JsonStr(blockCenterPosTab))
     
     --原点创建父节点
     local awCallback = function (awId)
@@ -1354,6 +1413,8 @@ function MergeTetrisBlockDataHandle(action)
         return
     end
     
+    --移除前检查是否需要生成新的方块
+    local genRes = CheckAndGenTetrisDropBlockForPlayer(match, block.playerId)
     --数据端移除掉落方块
     ServerLog("isOverlap mergeRow ", mergeRow, " ", blockColumn)
     --合并到棋盘
@@ -1369,6 +1430,10 @@ function MergeTetrisBlockDataHandle(action)
     local resAction = NewTetrisAction(match, nil, block, "MergeTetrisBlockResOnClient")
     resAction.boardBeforeDrop = boardBeforeDrop
     resAction.fullLineRes = fullLineRes
+    
+    if genRes.newBlocks then
+        resAction.newBlocks = genRes.newBlocks
+    end
     SendTetrisActionToMatchPlayers(resAction)
 end
 
@@ -1523,7 +1588,7 @@ function AddMotionToTetrisDropLines(dropParts, fullNum, speed)
 end
 
 function TetrisBlockPartDropMotionUpdate(obj, state, deltaTime)
-    -- printEz("TetrisBlockPartDropMotionUpdate xxx", MiscService:Table2JsonStr(obj))
+    -- printEz("TetrisBlockPartDropMotionUpdate", MiscService:Table2JsonStr(obj))
     local dropParts = obj.motionObj.dropParts
     local speed = obj.motionObj.speed
     -- local i = 0
@@ -1848,17 +1913,41 @@ function NewTetrisMatchData(action)
     local board = {parts={}, columnHeights={}, matchId=match.id, boardPosTab=match.boardPosTab}
     InitTetrisBoard(board, cfgTetris.board.rowNum, cfgTetris.board.colNum)
     match.board = board
-    -- SendSyncTetrisMatchDataToPlayers("SyncTetrisMatchDataNewMatch", match, nil, false)
-    -- local newAction = NewTetrisAction(match, nil, nil, "InitTetrisBoardEntity")
-    -- print("SendTetrisActionToMatchPlayers newAction ", newAction.funcName)
-    -- SendTetrisActionToMatchPlayers(newAction)
-    SendTetrisActionToMatchPlayers(NewTetrisAction(match, nil, nil, "StartTetrisMatchClient"))
+    local newAction = NewTetrisAction(match, nil, nil, "StartTetrisMatchClient")
+    local newBlockRes = GenTetrisDropBlockForNewMatch(match)
+    newAction.newBlocks = newBlockRes
+    -- printEz("NewTetrisMatchData", MiscService:Table2JsonStr(newBlockRes))
+    SendTetrisActionToMatchPlayers(newAction)
+end
+
+function GenTetrisDropBlockForNewMatch(match)
+    local newBlockRes = {matchId=match.id, players={}}
+    for playerId, value in pairs(match.players) do
+        local res = CheckAndGenTetrisDropBlockForPlayer(match, playerId)
+        newBlockRes.players[playerId] = res.newBlocks.players[playerId]
+    end
+    return newBlockRes
 end
 
 function StartTetrisMatchClient(action)
     SyncTetrisMatchDataNewMatch(action)
     InitTetrisBoardEntity(action)
     SetTetrisCameraWatchBoard(action.match)
+end
+
+--检查数据端发来的新方块
+function GenNewTetrisBlocksLocal(action)
+    if not action.newBlocks then
+        return
+    end
+    printEz("GenNewTetrisBlocksLocal", MiscService:Table2JsonStr(action.newBlocks))
+    --用数据生成新方块并添加到本地
+    for playerId, playerData in pairs(action.newBlocks.players) do
+        for index, cfg in ipairs(playerData) do
+            GenSingleTetrisDropBlock(action.newBlocks, playerId, cfg)
+        end
+    end
+    --xxx
 end
 
 function InitTetrisBoardEntity(action)
