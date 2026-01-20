@@ -26,7 +26,7 @@ cfgTetrisBlock_5_1 = {parts={{1,1,0,0}, {1,1,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={
 cfgTetrisBlock_6_1 = {parts={{1,1,1,0}, {1,0,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=6, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
 cfgTetrisBlock_7_1 = {parts={{1,1,1,0}, {0,0,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=7, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
 -- cfgTetrisBlock_1_2 = {parts={{0,0,0,0}, {0,1,0,0}, {1,1,0,0}, {1,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, entityDiffRow=1, entityDiffCol=0, rotate={x=90, y=0, z=90}}}
-local cfgTetris = {blockSize=100, dropSpeed=100, board={rowNum=20, colNum=10, posTab={x=150, y=1850, z=400}}, matchIdStart=0,
+local cfgTetris = {blockSize=100, dropSpeed=100, board={rowNum=20, colNum=10, posTab={x=150, y=1850, z=4400}}, matchIdStart=0,
     skins={default="default"}, dropSpeedUncontrollable=3000}
 -- local tetrisPlayerData = {dropSpeed=100, dropBlocks={}, boardPosTab=nil}
 local players = {}
@@ -41,6 +41,7 @@ local tetrisDataLocal = {blockProtos={itself={}, preview={}}}
 local testObj = {id=0, texts={}, delays={}}
 local constantTetris = {matchActions={StartTetrisMatchClient="StartTetrisMatchClient", NewTetrisMatchData="NewTetrisMatchData", MergeTetrisBlockResOnClient="MergeTetrisBlockResOnClient"},
     genBlockStratTypes={Seven="Seven", Thirteen="Thirteen", RandomEach="RandomEach"}}
+local uiConstants = {skinMenu=104701, skinList=104705}
 
 
 function CallbackCharCreated(playerId)
@@ -49,6 +50,9 @@ function CallbackCharCreated(playerId)
 end
 
 function ClientInit()
+    TimerManager:AddTimer(6, function ()
+        InitUI()
+    end)
 end
 
 function ServerInit()
@@ -255,15 +259,13 @@ end
 --生成单个组
 function GenTetrisDropBlockDataSideGroup(cfg, match, playerId, genGroup)
     if genGroup == constantTetris.genBlockStratTypes.Seven then
-        local typesMap = {}
+        cfg.types = {}
         --利用键值对,7种乱序
         for i = 1, 7, 1 do
-            typesMap[Stringfy(i)] = i
+            table.insert(cfg.types, i)
         end
-        cfg.types = {}
-        for key, value in pairs(typesMap) do
-            table.insert(cfg.types, value)
-        end
+        tableShuffle(cfg.types)
+        printEz("GenTetrisDropBlockDataSideGroup", MiscService:Table2JsonStr(cfg.types))
         for i = 1, 7, 1 do
             local newBlock = GenTetrisDropBlockDataSideSingle(cfg, match, playerId, genGroup, i)
         end
@@ -377,7 +379,7 @@ end
 function PrepareTetrisBlockProtos(skin)
     for type = 1, 7, 1 do
         local cfgBlock = GetTetrisBlockCfg(type, 1)
-        local posTab = VectorTablePlus(cfgTetris.board.posTab, type * 5 * cfgTetris.blockSize, -500, 0)
+        local posTab = VectorTablePlus(cfgTetris.board.posTab, type * 55 * cfgTetris.blockSize, -500, 0)
         printEz("PrepareTetrisBlockProtos", type, MiscService:Table2JsonStr(cfgTetris.board.posTab))
         printEz("PrepareTetrisBlockProtos vvv", type, MiscService:Table2JsonStr(posTab))
         InitTetrisBlockEntityProto(cfgBlock, skin, posTab)
@@ -827,7 +829,7 @@ end
 ---方块实体化,包括本体实体和预览实体
 function InitTetrisBlockEntityProto(blockCfg, skin, posTab)
     --如果使用空气墙,位置需要偏移
-    local cfgItself = {isProto=true, posTab = posTab, skin = skin, isPreview=false, partNum=0, usingAirwall=false, partEid=elesInScene.woodBoxB, orgSize = cfgElements.woodBoxB.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)}
+    local cfgItself = {isProto=true, posTab = posTab, skin = skin, isPreview=false, partNum=0, usingAirwall=false, partEid=elesInScene.cyberBox, orgSize = cfgElements.cyberBox.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)}
     local cfgPreview = {isProto=true, posTab = posTab, skin = skin, isPreview=true, partNum=0, usingAirwall=true, partEid=elesInScene.dianban, orgSize = cfgElements.airWall.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)}
     CreateTetrisBlockEntitySingle(blockCfg, cfgItself)
     CreateTetrisBlockEntitySingle(blockCfg, cfgPreview)
@@ -1093,6 +1095,13 @@ function SyncTetrisBlockEntityStateWithData(block, posTab, rotateTab, isPreview)
 end
 
 function SetTetrisCameraWatchBoard(match)
+    -- if 1 == 1 then
+    --     return
+    -- end
+    local playerId = GetLocalPlayerId()
+    Character:SetAttributeEnabled(playerId, Character.ATTR_ENABLE.CanMove, false)
+    Character:SetAttributeEnabled(playerId, Character.ATTR_ENABLE.CanJump, false)
+    Character:SetAttributeEnabled(playerId, Character.ATTR_ENABLE.MeshVisibility, false)
     -- if 1 == 1 then
     --     return
     -- end
@@ -1716,8 +1725,8 @@ function PrepareDropBlock(blockCur, match, index)
     local prepare = block.localData.prepare
     --棋盘顶
     local posTab = VectorTablePlus(match.board.boardPosTab, cfgTetris.blockSize * match.board.colNum, 0, cfgTetris.blockSize * match.board.rowNum)
-    posTab = VectorTablePlus(posTab, cfgTetris.blockSize * 4, 0, -1 * cfgTetris.blockSize * 3)
-    posTab = VectorTablePlus(posTab, 0, 0, -1 * (index - 1) * 4 * cfgTetris.blockSize)
+    posTab = VectorTablePlus(posTab, cfgTetris.blockSize * 3, 0, -1 * cfgTetris.blockSize * 3)
+    posTab = VectorTablePlus(posTab, -1 * block.blockCfg.colLen / 2 * cfgTetris.blockSize, 0, -1 * (index - 1) * 4 * cfgTetris.blockSize)
     -- printEz("PrepareDropBlock", block.id, block.blockCfg.type, block.blockCfg.morph, MiscService:Table2JsonStr(posTab), MiscService:Table2JsonStr(block))
     if not prepare then
         -- printEz("PrepareDropBlock not prepare", block.id, block.blockCfg.type, block.blockCfg.morph, MiscService:Table2JsonStr(block))
@@ -2798,7 +2807,29 @@ function ButtonPressed(item)
         ControlActionTetrisBlockLocal(nil, nil, true, nil)
     elseif item == 104480 then
         ControlActionTetrisBlockLocal(nil, nil, nil, true)
+    elseif item == uiConstants.skinMenu then
+        ShowSkins()
+    else
         -- TestRotateBlock()      
     end
     
+end
+
+function ShowSkins()
+    printEz("ShowSkins")
+    UI:SetVisibility({uiConstants.skinList}, true)
+end
+
+function InitUI()
+    -- UI:SetVisibility({uiConstants.skinList}, true)
+    local skinList = {}
+    table.insert(skinList, {showText="aaadsqsda"})
+    table.insert(skinList, {showText="sdadasdadasd1231"})
+    local idList = UI:InitListView(uiConstants.skinList, skinList)
+    UI:UpdateListViewItem(uiConstants.skinList, 1, {showText="aaadsqsda"})
+    local skinListSetCallback = function (listViewId, itemId, itemData)
+        printEz("skinListSetCallback")
+    end
+    UI:SetListViewItemSetCall(uiConstants.skinList, skinListSetCallback)
+    printEz("InitUI", MiscService:Table2JsonStr(idList), UI:GetUIName(uiConstants.skinList))
 end
