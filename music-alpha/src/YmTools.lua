@@ -790,7 +790,7 @@ function CopyElementAndChildrenHandle(srcTable, eid, parentId, props, callbackDo
             end
 
             if srcTable.dstScale ~= nil then
-                ServerLog("copy ele set state dstScale ServerLog ", srcTable.copyRootId)
+                printEz("copy ele set state dstScale ", srcTable.copyRootId)
                 SetElementStateDesc(state, "copy ele set state dstScale")
                 toSetState = true
                 if srcTable.dstScale ~= nil then

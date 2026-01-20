@@ -314,9 +314,9 @@ function GenSingleTetrisDropBlock(newBlocks, playerId, cfg)
     local match = tetrisMatchsLocal[newBlocks.matchId]
     block.matchId = match.id
     block.playerId = playerId
-    -- block.objId = string.format("tblock-%s-%s-%s", match.id, player.id, block.id)
-    block.objId = block.id
-    ServerLog("GenSingleTetrisDropBlock ", block.objId)
+    block.objId = string.format("tblock-%s-%s-%s", match.id, playerId, block.id)
+    -- block.objId = block.id
+    printEz("GenSingleTetrisDropBlock ", block.objId)
     block.dropSpeed = match.dropSpeed
     --init postab
     local board = match.board
@@ -333,6 +333,7 @@ function GenSingleTetrisDropBlock(newBlocks, playerId, cfg)
     
     -- local action = NewTetrisAction(match, player, block, "NewTetrisBlockEntity")
     -- SendTetrisActionToMatchPlayers(action)
+    return block
 end
 
 --查找长宽用于旋转
@@ -632,7 +633,7 @@ function SyncTetrisMatchDataNewMatch(action)
         end
     end
     --创建方块
-    GenNewTetrisBlocksLocal(action)
+    GenNewTetrisBlocksLocal(action, true)
 end
 
 --更新对局但不包括玩家信息
@@ -735,9 +736,19 @@ function GetTetrisBlockPosTab(board, blockRow, blockCol)
     return VectorTablePlus(board.boardPosTab, (blockCol - 1) * cfgTetris.blockSize, 0, (blockRow - 1) * cfgTetris.blockSize)
 end
 
+function NewInitTetrisBlockEntityParam()
+    return {blockTotalNum=1, doneNum=0, postDone=false}
+end
+
 ---方块实体化,包括本体实体和预览实体
 function InitTetrisBlockEntity(block, match)
-    local res = {blockTotalNum=0, doneNum=0, postDone=false}
+    local res = NewInitTetrisBlockEntityParam()
+    --先计算需要生成几个
+    if IsBlockPlayerSelf(block) then
+        --预览加本体
+        res.blockTotalNum = 2
+    end
+
     if IsBlockPlayerSelf(block) then
         InitTetrisBlockEntitySingle(block, match, true, res)
     end
@@ -746,38 +757,46 @@ end
 
 function InitTetrisBlockEntitySingle(block, match, isPreview, res)
     --用于检测实体完成
-    res.blockTotalNum = res.blockTotalNum + 1
     local data = tetrisDataLocal.blockProtos.itself
     if isPreview then
         data = tetrisDataLocal.blockProtos.preview
     end
+    local prepare = res.prepare
     local skin = cfgTetris.skins.default
     local peid = data[skin][Stringfy(block.blockCfg.type)].eid
     local posTab = block.posTab
     if isPreview then
         posTab = CalcTetrisBlockPreviewPos(block, match.board)
+    elseif prepare then
+        posTab = prepare.posTab
     end
     local blockCenterPosTab = GetTetrisBlockCenterPosTab(block, posTab)
     -- printEz("InitTetrisBlockEntitySingle aaa")
     local awCallback = function (awId)
         res.doneNum = res.doneNum + 1
-        if not isPreview then
-            block.localData.awId = awId
+        if prepare then
+            EnsureTableValue(block.localData, "prepare").awId = awId
         else
-            block.localData.preAwId = awId
+            if not isPreview then
+                block.localData.awId = awId
+            else
+                block.localData.preAwId = awId
+            end
+
+            UpdateTetrisBlockLocalDataParts(block, awId, isPreview)
+            if not res.postDone and res.doneNum == res.blockTotalNum then
+                -- printEz("InitTetrisBlockEntitySingle AddNewObjADAD aaa", isPreview)
+                res.postDone = true
+                -- printEz("InitTetrisBlockEntitySingle AddNewObjADAD")
+                local obj = AddNewObj(0, typeObjs.tetrisBlock, block.objId, 0.01, UpdateTetrisDropBlock, 9999, CommonDestroy)
+                obj.block = block
+                SyncMoveTetrisDropBlock(block)
+                TimerManager:AddFrame(1, function ()
+                    block.localData.entityReady = true
+                end)
+            end
         end
-        UpdateTetrisBlockLocalDataParts(block, awId, isPreview)
-        if not res.postDone and res.doneNum == res.blockTotalNum then
-            -- printEz("InitTetrisBlockEntitySingle AddNewObjADAD aaa", isPreview)
-            res.postDone = true
-            -- printEz("InitTetrisBlockEntitySingle AddNewObjADAD")
-            local obj = AddNewObj(0, typeObjs.tetrisBlock, block.objId, 0.01, UpdateTetrisDropBlock, 9999, CommonDestroy)
-            obj.block = block
-            SyncMoveTetrisDropBlock(block)
-            TimerManager:AddFrame(1, function ()
-                block.localData.entityReady = true
-            end)
-        end
+        
     end
     CopyElementAndChildrenFull(peid, cfgCopyProps, awCallback, false,
         VectorFromTable(blockCenterPosTab), false, nil,
@@ -1162,7 +1181,7 @@ function CheckTetrisBlockState(block, obj)
     UI:SetText({102139}, MiscService:Table2JsonStr({block.curRow}))
     if block.curRow < -8 then
         block.active = false
-        ServerLog("CheckTetrisBlockState CommonDestroy ", obj.id)
+        printEz("CheckTetrisBlockState CommonDestroy ", obj.id)
         CommonDestroy(0, obj)
         return
     end
@@ -1380,10 +1399,11 @@ function MergeTetrisBlockToBoard(match, block, isClient)
                 local boardPart = board.parts[boardRow][j + blockColumn - 1]
                 boardPart.v = 1
                 if not isClient then
-                    boardPart.bid = block.objId
-                    boardPart.bRow = i
-                    boardPart.bCol = j
-                    boardPart.morph = block.blockCfg.morph
+                    --xxx
+                    -- boardPart.bid = block.objId
+                    -- boardPart.bRow = i
+                    -- boardPart.bCol = j
+                    -- boardPart.morph = block.blockCfg.morph
                 end
             end
         end
@@ -1416,7 +1436,7 @@ function MergeTetrisBlockDataHandle(action)
     --移除前检查是否需要生成新的方块
     local genRes = CheckAndGenTetrisDropBlockForPlayer(match, block.playerId)
     --数据端移除掉落方块
-    ServerLog("isOverlap mergeRow ", mergeRow, " ", blockColumn)
+    printEz("isOverlap mergeRow ", mergeRow, " ", blockColumn)
     --合并到棋盘
     MergeTetrisBlockToBoard(match, block, false)
     --消除前的数据需要传给客户端先合并,记录方块组件的数据
@@ -1622,12 +1642,14 @@ function MergeTetrisBlockResOnClient(action)
         blockLocal = GetTetrisLocalBlock(block)
     end
     blockLocal.mergeDone = true
+    GenNewTetrisBlocksLocal(action, false)
     -- local blockLocal = RemoveTetrisSolidetBlock(block, tetrisMatchsLocal, action.mergeFail)
     if action.mergeFail then
         print("MergeTetrisBlockResOnClient mergeFail")
         --仍然需要同步棋盘数据,因为本地数据已错误
         SyncTetrisMatchDataUpdateMatchNoPlayerData(action)
         HandleTetrisBlockMergeFailed(blockLocal, true)
+        FindNextDropBlockToBoard(blockLocal, nil)
         return
     end
     local matchLocal = GetMatchLocalByBlock(block)
@@ -1646,6 +1668,70 @@ function MergeTetrisBlockResOnClient(action)
     SyncTetrisMatchDataUpdateMatchNoPlayerData(action)
     print("MergeTetrisBlockDataHandle client ", MiscService:Table2JsonStr(GetMatchLocalByBlock(block).board))
     RemoveTetrisBlockData(blockLocal, tetrisMatchsLocal)
+    FindNextDropBlockToBoard(blockLocal, nil)
+end
+
+function FindNextDropBlock(match, playerId, nid)
+    local block = match.players[playerId].dropBlocks[nid]
+    if not block then
+        printEz("FindNextDropBlock error cant find")
+    end
+    return block
+end
+
+--将下一个方块移动到棋盘
+function FindNextDropBlockToBoard(blockCur, block)
+    -- printEz("FindNextDropBlockToBoard start")
+    local match = nil
+    if blockCur ~= nil then
+        match = tetrisMatchsLocal[blockCur.matchId]
+        block = FindNextDropBlock(match, blockCur.playerId, blockCur.nid)
+    else
+        match = tetrisMatchsLocal[block.matchId]
+    end
+    if block == nil then
+        return
+    end
+    printEz("FindNextDropBlockToBoard block", block.id, block.blockCfg.type, block.blockCfg.morph, MiscService:Table2JsonStr(block))
+    local prepare = block.localData.prepare
+    --销毁准备预览
+    if prepare then
+        --销毁
+        DestroyElementAndChildren(prepare.awId)
+    end
+    --实体化
+    InitTetrisBlockEntity(block, match)
+    --生成准备预览
+    if IsBlockPlayerSelf(block) then
+        local blockPrevious = block
+        for i = 1, 2, 1 do
+            blockPrevious = PrepareDropBlock(blockPrevious, match, i)
+        end
+    end
+end
+
+--生成准备预览
+function PrepareDropBlock(blockCur, match, index)
+    local block = FindNextDropBlock(match, blockCur.playerId, blockCur.nid)
+    local prepare = block.localData.prepare
+    --棋盘顶
+    local posTab = VectorTablePlus(match.board.boardPosTab, cfgTetris.blockSize * match.board.colNum, 0, cfgTetris.blockSize * match.board.rowNum)
+    posTab = VectorTablePlus(posTab, cfgTetris.blockSize * 4, 0, -1 * cfgTetris.blockSize * 3)
+    posTab = VectorTablePlus(posTab, 0, 0, -1 * (index - 1) * 4 * cfgTetris.blockSize)
+    -- printEz("PrepareDropBlock", block.id, block.blockCfg.type, block.blockCfg.morph, MiscService:Table2JsonStr(posTab), MiscService:Table2JsonStr(block))
+    if not prepare then
+        -- printEz("PrepareDropBlock not prepare", block.id, block.blockCfg.type, block.blockCfg.morph, MiscService:Table2JsonStr(block))
+        local res = NewInitTetrisBlockEntityParam()
+        res.prepare = {posTab=posTab}
+        InitTetrisBlockEntitySingle(block, match, false, res)
+    else
+        posTab = GetTetrisBlockCenterPosTab(block, posTab)
+        -- printEz("PrepareDropBlock setpos", block.id, MiscService:Table2JsonStr(posTab), prepare.awId, block.blockCfg.type, block.blockCfg.morph, MiscService:Table2JsonStr(block))
+        -- printEz("PrepareDropBlock setpos curpos", block.id, MiscService:Table2JsonStr(VectorToTable(Element:GetPosition(prepare.awId))) )
+        --设置位置
+        Element:SetPosition(prepare.awId, VectorFromTable(posTab), Element.COORDINATE.World)
+    end
+    return block
 end
 
 function SolidifyTetrisBlockAction(action)
@@ -1936,16 +2022,28 @@ function StartTetrisMatchClient(action)
 end
 
 --检查数据端发来的新方块
-function GenNewTetrisBlocksLocal(action)
+function GenNewTetrisBlocksLocal(action, startDrop)
     if not action.newBlocks then
         return
     end
     printEz("GenNewTetrisBlocksLocal", MiscService:Table2JsonStr(action.newBlocks))
     --用数据生成新方块并添加到本地
+    local prepareBlocks = {}
     for playerId, playerData in pairs(action.newBlocks.players) do
         for index, cfg in ipairs(playerData) do
-            GenSingleTetrisDropBlock(action.newBlocks, playerId, cfg)
+            local block = GenSingleTetrisDropBlock(action.newBlocks, playerId, cfg)
+            if index == 1 then
+                --开始掉落
+                table.insert(prepareBlocks, block)
+            end
         end
+    end
+    if startDrop then
+        TimerManager:AddTimer(1, function ()
+            for index, block in ipairs(prepareBlocks) do
+                FindNextDropBlockToBoard(nil, block)
+            end
+        end)
     end
     --xxx
 end
@@ -1983,7 +2081,7 @@ end
 
 function NewTetrisAction(match, player, block, funcName)
     if match == nil then
-        ServerLog("NewTetrisAction error match param nil ", funcName)
+        printEz("NewTetrisAction error match param nil ", funcName)
     end
     local action = {match=match, player=player, block=block, funcName=funcName}
     return action
@@ -2022,7 +2120,7 @@ function SendTetrisActionToPlayers(action, players)
 end
 
 function SendTetrisActionToSinglePlayer(action, playerId)
-    ServerLog("SendTetrisActionToSinglePlayer ", action.funcName, " ", playerId, " ", GetLocalPlayerId())
+    printEz("SendTetrisActionToSinglePlayer ", action.funcName, " ", playerId, " ", GetLocalPlayerId())
     --必须复制一遍防止单机模式时对象重用
     action = CopyTableShallowWithoutKey(action, "localData")
     --处理不需要发送match数据的情况
@@ -2038,7 +2136,7 @@ end
 
 function TetrisAction(actionObj)
     local action = actionObj.action
-    ServerLog("TetrisActionAct ", MiscService:Table2JsonStr(actionObj))
+    printEz("TetrisActionAct ", MiscService:Table2JsonStr(actionObj))
     _G[action.funcName](action)
 end
 
@@ -2048,7 +2146,7 @@ end
 
 --发往数据端
 function SendTetrisActionToDataSide(action)
-    ServerLog("SendTetrisActionToDataSide ", MiscService:Table2JsonStr(action))
+    printEz("SendTetrisActionToDataSide ", MiscService:Table2JsonStr(action))
     local dataPlayerId = GetTetrisMatchDataSidePlayerId(action.match)
     SendTetrisActionToSinglePlayer(action, dataPlayerId)
 end
