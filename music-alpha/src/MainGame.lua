@@ -41,7 +41,9 @@ local tetrisDataLocal = {blockProtos={itself={}, preview={}}}
 local testObj = {id=0, texts={}, delays={}}
 local constantTetris = {matchActions={StartTetrisMatchClient="StartTetrisMatchClient", NewTetrisMatchData="NewTetrisMatchData", MergeTetrisBlockResOnClient="MergeTetrisBlockResOnClient"},
     genBlockStratTypes={Seven="Seven", Thirteen="Thirteen", RandomEach="RandomEach"}}
-local uiConstants = {skinMenu=104701, skinGrid=104998, skinList=104705, skinItem=105198, skinNameItem=105043}
+local uiConstants = {skinMenu=104701, skinGrid=104998, skinList=104705, skinItem=105198, skinNameItem=105043,
+ mainMenu={id=105202, restartGame=105293, camPlus=105404, camMinus=105405, camText=105406}}
+local uiStates = {mainMenu=false, skinMenu=false}
 local blockSkins = {}
 
 
@@ -1148,11 +1150,7 @@ function SetTetrisCameraWatchBoard(match)
     useVertical = false
 
     Camera:SetOrthographic(true)
-    if useVertical then
-        Camera:SetOrthographicWidth(cfgTetris.blockSize * board.rowNum)
-    else
-        Camera:SetOrthographicWidth(cfgTetris.blockSize * board.rowNum * 2)
-    end
+    SetCameraSize(board)
     
     
     local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * board.colNum / 2, 2000, cfgTetris.blockSize * board.rowNum / 2)
@@ -1177,6 +1175,26 @@ function SetTetrisCameraWatchBoard(match)
     if useVertical then
         Setting:SwitchToVerticalScreen(true)
     end
+end
+
+function SetCameraSize(board)
+    local uiSize = UI:GetUISize()
+    printEz("SetCameraSize", MiscService:Table2JsonStr(uiSize))
+    local camWidth = cfgTetris.blockSize * board.rowNum
+    camWidth = uiSize.X / uiSize.Y * camWidth
+    uiStates.camWidth = camWidth
+    Camera:SetOrthographicWidth(uiStates.camWidth)
+    -- if useVertical then
+    --     Camera:SetOrthographicWidth(cfgTetris.blockSize * board.rowNum)
+    -- else
+    --     Camera:SetOrthographicWidth(cfgTetris.blockSize * board.rowNum * 2)
+    -- end
+end
+
+function SetCameraSizeUpdate(diff)
+    uiStates.camWidth = uiStates.camWidth + diff
+    Camera:SetOrthographicWidth(uiStates.camWidth)
+    UI:SetText({uiConstants.mainMenu.camText}, Stringfy(uiStates.camWidth))
 end
 
 function TestRotateBlock()
@@ -1319,6 +1337,21 @@ end
 function DestroyTetrisBlockPreview(block)
     if block.localData.preAwId then
         DestroyElementAndChildren(block.localData.preAwId)
+    end
+end
+
+function DestroyTetrisBlockEntity(block)
+    if block.localData.awId then
+        DestroyElementAndChildren(block.localData.awId)
+    end
+end
+
+function DestroyTetrisBlockEntityPrepare(block)
+    local prepare = block.localData.prepare
+    --销毁准备预览
+    if prepare then
+        --销毁
+        DestroyElementAndChildren(prepare.awId)
     end
 end
 
@@ -1752,12 +1785,7 @@ function FindNextDropBlockToBoard(blockCur, block)
         return
     end
     printEz("FindNextDropBlockToBoard block", block.id, block.blockCfg.type, block.blockCfg.morph, MiscService:Table2JsonStr(block))
-    local prepare = block.localData.prepare
-    --销毁准备预览
-    if prepare then
-        --销毁
-        DestroyElementAndChildren(prepare.awId)
-    end
+    DestroyTetrisBlockEntityPrepare(block)
     --实体化
     InitTetrisBlockEntity(block, match)
     --生成准备预览
@@ -1863,7 +1891,7 @@ function SolidifyTetrisBlockConfirm(block, board)
             end
         end
     end
-    DestroyElementAndChildren(block.localData.awId)
+    DestroyTetrisBlockEntity(block)
 end
 
 --设置curColumn,保证不会方块不会超出棋盘
@@ -2074,6 +2102,7 @@ function GenTetrisDropBlockForNewMatch(match)
 end
 
 function StartTetrisMatchClient(action)
+    DestroyLastMatchEntityClient()
     SyncTetrisMatchDataNewMatch(action)
     InitTetrisBoardEntity(action)
     SetTetrisCameraWatchBoard(action.match)
@@ -2123,6 +2152,7 @@ function InitTetrisBoardEntity(action)
     sizeTab = VectorTablePlus(sizeTab, 0, 0, 0)
 
     local callback = function (eid)
+        EnsureTableValue(board, "localData").awId = eid
         -- local spline = Element:AddSpline(VectorFromTable(board.boardPosTab), Engine.Vector(0, 0, 0), Engine.Vector(1,1,1), eid)
         -- Element:UpdateSplinePoints(spline, {VectorFromTable(board.boardPosTab), VectorFromTable(VectorTablePlus(posTab, 900, 0, -0))})
     end
@@ -2797,6 +2827,7 @@ function RegisterEventsServer()
 end
 
 function TetrisMatchFailServer(action)
+    tetrisMatchsServer[action.matchRes.matchId].inactive = true
     TimerManager:AddTimer(30, function ()
         tetrisMatchsServer[action.matchRes.matchId] = nil
     end)
@@ -2804,6 +2835,7 @@ end
 
 function MatchFailOnDataSide(match)
     --数据端
+    tetrisMatchs[match.id].inactive = true
     TimerManager:AddTimer(30, function ()
         tetrisMatchs[match.id] = nil
     end)
@@ -2830,11 +2862,38 @@ function TetrisMatchFailClient(action)
         tetrisMatchsLocal[matchId] = nil
     end)
     local match = tetrisMatchsLocal[matchId]
+    tetrisDataLocal.lastMatch = match
     local blocks = GetTetrisDroppingBlocks()
     for index, block in ipairs(blocks) do
         DestroyTetrisBlockPreview(block)
         block.active = false
         RemoveBlockObjAndMotion(block)
+    end
+end
+
+function DestroyLastMatchEntityClient()
+    local match = tetrisDataLocal.lastMatch
+    if not match then
+        return
+    end
+    printEz("DestroyLastMatchEntityClient")
+    --销毁棋盘实体
+    DestroyElementAndChildren(match.board.localData.awId)
+    --销毁棋盘棋子实体
+    for key, row in pairs(match.board.parts) do
+        for key, part in pairs(row) do
+            if part.localData and part.localData.eid then
+                DestroyElementAndChildren(part.localData.eid)
+            end
+        end
+    end
+    --销毁方块实体
+    for key, playerData in pairs(match.players) do
+        for key, block in pairs(playerData.dropBlocks) do
+            DestroyTetrisBlockPreview(block)
+            DestroyTetrisBlockEntity(block)
+            DestroyTetrisBlockEntityPrepare(block)
+        end
     end
 end
 
@@ -2905,15 +2964,42 @@ function ButtonPressed(item)
         ControlActionTetrisBlockLocal(nil, nil, nil, true)
     elseif item == uiConstants.skinMenu then
         ShowSkins()
+    elseif item == uiConstants.mainMenu.restartGame then
+        RequestRestartMatch()
+    elseif item == uiConstants.mainMenu.camPlus then
+        SetCameraSizeUpdate(100)
+    elseif item == uiConstants.mainMenu.camMinus then
+        SetCameraSizeUpdate(-100)
     else
         -- TestRotateBlock()      
     end
     
 end
 
+function RequestRestartMatch()
+    printEz("RequestRestartMatch")
+    PushActionToServer(false, "HandleRequestRestartMatch", {playerId=GetLocalPlayerIdString()})
+end
+
+function HandleRequestRestartMatch(obj)
+    local playerId = obj.playerId
+    for key, match in pairs(tetrisMatchsServer) do
+        if not match.inactive then
+            if match.players[playerId] then
+                printEz("HandleRequestRestartMatch already has match active")
+                return
+            end
+        end
+    end
+    StartTetrisMatchAll()
+end
+
 function ShowSkins()
     printEz("ShowSkins")
-    UI:SetVisibility({uiConstants.skinGrid}, true)
+    uiStates.mainMenu = (not uiStates.mainMenu)
+    uiStates.skinMenu = (not uiStates.skinMenu)
+    UI:SetVisibility({uiConstants.skinGrid}, uiStates.skinMenu)
+    UI:SetVisibility({uiConstants.mainMenu.id}, uiStates.mainMenu)
 end
 
 function InitUI()
