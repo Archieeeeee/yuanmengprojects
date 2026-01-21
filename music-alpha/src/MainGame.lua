@@ -48,6 +48,10 @@ local blockSkins = {}
 function CallbackCharCreated(playerId)
     local pos = Element:GetPosition(platformId)
     Character:SetPosition(playerId, pos + Engine.Vector(0, 0, 500))
+
+    Character:SetAttributeEnabled(playerId, Character.ATTR_ENABLE.CanMove, false)
+    Character:SetAttributeEnabled(playerId, Character.ATTR_ENABLE.CanJump, false)
+    Character:SetAttributeEnabled(playerId, Character.ATTR_ENABLE.MeshVisibility, false)
 end
 
 function ClientInit()
@@ -227,13 +231,30 @@ function GetTetrisControlBlock()
     for key, match in pairs(tetrisMatchsLocal) do
         for key, player in pairs(match.players) do
             for key, block in pairs(player.dropBlocks) do
-                if block.active and IsBlockPlayerSelf(block) and block.localData and block.localData.entityReady and block.localData.controllable then
+                if block.active and IsBlockPlayerSelf(block) and block.localData and block.localData.entityReady
+                and block.localData.objUpdated and block.localData.controllable then
                     return block
                 end
             end
         end
     end
     return nil
+end
+
+function GetTetrisDroppingBlocks(matchId)
+    local match = tetrisMatchsLocal[matchId]
+    local res = {}
+    if not match then
+        return res
+    end
+    for key, player in pairs(match.players) do
+        for key, block in pairs(player.dropBlocks) do
+            if block.active and block.localData and block.localData.entityReady and block.localData.controllable then
+                table.insert(res, block)
+            end
+        end
+    end
+    return res
 end
 
 --数据端合并之后检查是否需要生成新的方块
@@ -1117,10 +1138,7 @@ function SetTetrisCameraWatchBoard(match)
     -- if 1 == 1 then
     --     return
     -- end
-    local playerId = GetLocalPlayerId()
-    Character:SetAttributeEnabled(playerId, Character.ATTR_ENABLE.CanMove, false)
-    Character:SetAttributeEnabled(playerId, Character.ATTR_ENABLE.CanJump, false)
-    Character:SetAttributeEnabled(playerId, Character.ATTR_ENABLE.MeshVisibility, false)
+    
     -- if 1 == 1 then
     --     return
     -- end
@@ -1194,6 +1212,8 @@ function UpdateTetrisDropBlock(deltaTime, obj)
         return
     end
     CheckTetrisBlockState(block, obj)
+    --标记为执行过
+    block.localData.objUpdated = true
 end
 
 function CalcTetrisBlockCurRow(blockPosTab, board)
@@ -1297,7 +1317,9 @@ function SolidifyTetrisBlockSimulate(block, mergeRow, blockColumn, match)
 end
 
 function DestroyTetrisBlockPreview(block)
-    DestroyElementAndChildren(block.localData.preAwId)
+    if block.localData.preAwId then
+        DestroyElementAndChildren(block.localData.preAwId)
+    end
 end
 
 function CreateEffectOnTetrisBlock(block, match, botRow)
@@ -1438,6 +1460,7 @@ function MergeTetrisBlockToBoard(match, block, isClient)
     end
     --重新计算棋盘每一列的最高行
     CalcTetrisBoardColumnHeights(board)
+    return true
 end
 
 --这是在数据端执行的
@@ -1466,7 +1489,12 @@ function MergeTetrisBlockDataHandle(action)
     --数据端移除掉落方块
     printEz("isOverlap mergeRow ", mergeRow, " ", blockColumn)
     --合并到棋盘
-    MergeTetrisBlockToBoard(match, block, false)
+    local mergeRes = MergeTetrisBlockToBoard(match, block, false)
+    if not mergeRes then
+        MatchFailOnDataSide(match)
+        return
+    end
+    
     --消除前的数据需要传给客户端先合并,记录方块组件的数据
     local boardBeforeDrop = CopyTableShallow(match.board)
     --数据端不需要保留方块数据
@@ -1717,6 +1745,9 @@ function FindNextDropBlockToBoard(blockCur, block)
     else
         match = tetrisMatchsLocal[block.matchId]
     end
+    if match == nil then
+        return
+    end
     if block == nil then
         return
     end
@@ -1806,8 +1837,7 @@ end
 function SolidifyTetrisBlock(block, row, column, board)
     -- 不删除而是标记失效,等数据端处理完成后还需要用到储存的本地实体化数据
     -- PushTetrisSolidetBlock(block, tetrisMatchsLocal)
-    InactiveObjById(block.objId)
-    RemoveMotionByEidAndName(block.localData.awId, "drop")
+    RemoveBlockObjAndMotion(block)
     block.active = false
     block.solidet = true
     block.curRow = row
@@ -2177,6 +2207,11 @@ function SendTetrisActionToDataSide(action)
     printEz("SendTetrisActionToDataSide ", MiscService:Table2JsonStr(action))
     local dataPlayerId = GetTetrisMatchDataSidePlayerId(action.match)
     SendTetrisActionToSinglePlayer(action, dataPlayerId)
+end
+
+function SendTetrisActionToServerSide(action)
+    printEz("SendTetrisActionToServerSide ", MiscService:Table2JsonStr(action))
+    SendTetrisActionToSinglePlayer(action, toolCommonCfgs.serverPlayerId)
 end
 
 
@@ -2759,6 +2794,48 @@ function CallbackPlayerTouchEle(eid, player)
 end
 
 function RegisterEventsServer() 
+end
+
+function TetrisMatchFailServer(action)
+    TimerManager:AddTimer(30, function ()
+        tetrisMatchsServer[action.matchRes.matchId] = nil
+    end)
+end
+
+function MatchFailOnDataSide(match)
+    --数据端
+    TimerManager:AddTimer(30, function ()
+        tetrisMatchs[match.id] = nil
+    end)
+    --服务器端
+    local matchRes = {matchId=match.id, matchFail=true}
+    local serverAction = NewTetrisAction(match, nil, nil, "TetrisMatchFailServer")
+    serverAction.matchRes = matchRes
+    SendTetrisActionToServerSide(serverAction)
+    --客户端
+    local clientAction = NewTetrisAction(match, nil, nil, "TetrisMatchFailClient")
+    clientAction.matchRes = matchRes
+    SendTetrisActionToMatchPlayers(clientAction)
+end
+
+function RemoveBlockObjAndMotion(block)
+    InactiveObjById(block.objId)
+    RemoveMotionByEidAndName(block.localData.awId, "drop")
+end
+
+function TetrisMatchFailClient(action)
+    local matchRes = action.matchRes
+    local matchId = matchRes.matchId
+    TimerManager:AddTimer(30, function ()
+        tetrisMatchsLocal[matchId] = nil
+    end)
+    local match = tetrisMatchsLocal[matchId]
+    local blocks = GetTetrisDroppingBlocks()
+    for index, block in ipairs(blocks) do
+        DestroyTetrisBlockPreview(block)
+        block.active = false
+        RemoveBlockObjAndMotion(block)
+    end
 end
 
 function RegisterEventsAll()
