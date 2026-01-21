@@ -27,7 +27,7 @@ cfgTetrisBlock_6_1 = {parts={{1,1,1,0}, {1,0,0,0},  {0,0,0,0}, {0,0,0,0}}, cfg={
 cfgTetrisBlock_7_1 = {parts={{1,1,1,0}, {0,0,1,0},  {0,0,0,0}, {0,0,0,0}}, cfg={type=7, morph=1, nextMorph=2, rotate={x=0, y=0, z=90}}}
 -- cfgTetrisBlock_1_2 = {parts={{0,0,0,0}, {0,1,0,0}, {1,1,0,0}, {1,0,0,0}}, cfg={type=1, morph=2, nextMorph=1, entityDiffRow=1, entityDiffCol=0, rotate={x=90, y=0, z=90}}}
 local cfgTetris = {blockSize=100, dropSpeed=100, board={rowNum=20, colNum=10, posTab={x=150, y=1850, z=4400}}, matchIdStart=0,
-    skins={default="default"}, dropSpeedUncontrollable=3000}
+    skins={default="default"}, dropSpeedUncontrollable=3000, skinName="cyberBox"}
 -- local tetrisPlayerData = {dropSpeed=100, dropBlocks={}, boardPosTab=nil}
 local players = {}
 --服务端只负责记录
@@ -41,7 +41,8 @@ local tetrisDataLocal = {blockProtos={itself={}, preview={}}}
 local testObj = {id=0, texts={}, delays={}}
 local constantTetris = {matchActions={StartTetrisMatchClient="StartTetrisMatchClient", NewTetrisMatchData="NewTetrisMatchData", MergeTetrisBlockResOnClient="MergeTetrisBlockResOnClient"},
     genBlockStratTypes={Seven="Seven", Thirteen="Thirteen", RandomEach="RandomEach"}}
-local uiConstants = {skinMenu=104701, skinList=104705}
+local uiConstants = {skinMenu=104701, skinGrid=104998, skinList=104705, skinItem=105198, skinNameItem=105043}
+local blockSkins = {}
 
 
 function CallbackCharCreated(playerId)
@@ -123,8 +124,15 @@ function GameInitVars()
 
     --将大小换算成厘米
     for key, value in pairs(cfgElements) do
-        value.size = VectorScale(value.size, 100)
+        value.size = VectorTableEnsure(VectorScale(value.size, 100))
     end
+
+    blockSkins.floorBox = {name="floorBox", eid=elesInScene.floorBox, orgSize=cfgElements.floorBox.size}
+    blockSkins.cyberBox = {name="cyberBox", eid=elesInScene.cyberBox, orgSize=cfgElements.cyberBox.size}
+    blockSkins.boxElec = {name="boxElec", eid=elesInScene.boxElec, orgSize=cfgElements.boxElec.size}
+    blockSkins.boxFramed = {name="boxFramed", eid=elesInScene.boxFramed, orgSize=cfgElements.cube.size}
+    blockSkins.woodBox = {name="woodBox", eid=elesInScene.woodBox, orgSize=cfgElements.woodBox.size}
+    blockSkins.woodBoxB = {name="woodBoxB", eid=elesInScene.woodBoxB, orgSize=cfgElements.woodBoxB.size}
 
     posOrg = Element:GetPosition(platformId)
     LoadGlobalVarsFromData(cfgDataNames)
@@ -373,7 +381,9 @@ function InitTetrisData()
         end
     end
     --生成方块原型
-    PrepareTetrisBlockProtos(cfgTetris.skins.default)
+    for key, value in pairs(blockSkins) do
+        PrepareTetrisBlockProtos(value)
+    end
 end
 
 function PrepareTetrisBlockProtos(skin)
@@ -764,8 +774,8 @@ function InitTetrisBlockEntitySingle(block, match, isPreview, res)
         data = tetrisDataLocal.blockProtos.preview
     end
     local prepare = res.prepare
-    local skin = cfgTetris.skins.default
-    local peid = data[skin][Stringfy(block.blockCfg.type)].eid
+    local skinData = GetBlockSkinData(isPreview, cfgTetris.skinName, block.blockCfg.type)
+    local peid = skinData.eid
     local posTab = block.posTab
     if isPreview then
         posTab = CalcTetrisBlockPreviewPos(block, match.board)
@@ -829,10 +839,19 @@ end
 ---方块实体化,包括本体实体和预览实体
 function InitTetrisBlockEntityProto(blockCfg, skin, posTab)
     --如果使用空气墙,位置需要偏移
-    local cfgItself = {isProto=true, posTab = posTab, skin = skin, isPreview=false, partNum=0, usingAirwall=false, partEid=elesInScene.cyberBox, orgSize = cfgElements.cyberBox.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)}
+    local cfgItself = {isProto=true, posTab = posTab, skin = skin, isPreview=false, partNum=0, usingAirwall=false, partEid=skin.eid, orgSize = skin.orgSize, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)}
     local cfgPreview = {isProto=true, posTab = posTab, skin = skin, isPreview=true, partNum=0, usingAirwall=true, partEid=elesInScene.dianban, orgSize = cfgElements.airWall.size, size=NewVectorTable(cfgTetris.blockSize, cfgTetris.blockSize, cfgTetris.blockSize)}
     CreateTetrisBlockEntitySingle(blockCfg, cfgItself)
     CreateTetrisBlockEntitySingle(blockCfg, cfgPreview)
+end
+
+function GetBlockSkinData(isPreview, skinName, type)
+    local data = tetrisDataLocal.blockProtos.itself
+    if isPreview then
+        data = tetrisDataLocal.blockProtos.preview
+    end
+    local skinData = EnsureTableValue(data, skinName, Stringfy(type))
+    return skinData
 end
 
 function CreateTetrisBlockEntitySingle(blockCfg, cfg)
@@ -848,7 +867,7 @@ function CreateTetrisBlockEntitySingle(blockCfg, cfg)
             if cfg.isPreview then
                 data = tetrisDataLocal.blockProtos.preview
             end
-            local skinData = EnsureTableValue(data, cfg.skin, Stringfy(blockCfg.cfg.type))
+            local skinData = GetBlockSkinData(cfg.isPreview, cfg.skin.name, blockCfg.cfg.type)
             skinData.eid = awId
         end
 
@@ -2817,19 +2836,37 @@ end
 
 function ShowSkins()
     printEz("ShowSkins")
-    UI:SetVisibility({uiConstants.skinList}, true)
+    UI:SetVisibility({uiConstants.skinGrid}, true)
 end
 
 function InitUI()
-    -- UI:SetVisibility({uiConstants.skinList}, true)
-    local skinList = {}
-    table.insert(skinList, {showText="aaadsqsda"})
-    table.insert(skinList, {showText="sdadasdadasd1231"})
-    local idList = UI:InitListView(uiConstants.skinList, skinList)
-    UI:UpdateListViewItem(uiConstants.skinList, 1, {showText="aaadsqsda"})
-    local skinListSetCallback = function (listViewId, itemId, itemData)
-        printEz("skinListSetCallback")
+    -- local newItem = UI:DuplicateWidget(uiConstants.skinItem, 200, 200)
+    -- UI:SetText({newItem}, "测试一下ooo")
+    -- UI:AddToScrollView(uiConstants.skinList, {newItem})
+
+    local skinGrid = uiConstants.skinGrid
+    --设置可见否则不能初始化
+    UI:SetVisibility({skinGrid}, true)
+    --设置不可见来隐藏列表
+    UI:SetVisibility({skinGrid}, false)
+    local skinData = {}
+    for key, value in pairs(blockSkins) do
+        table.insert(skinData, value)
     end
-    UI:SetListViewItemSetCall(uiConstants.skinList, skinListSetCallback)
-    printEz("InitUI", MiscService:Table2JsonStr(idList), UI:GetUIName(uiConstants.skinList))
+    local idList = UI:InitListView(skinGrid, skinData)
+    -- UI:UpdateListViewItem(uiConstants.skinGrid, 1, {showText="aaadsqsda"})
+    local skinListSetCallback = function (listViewId, itemId, itemData)
+        local nameItem = UI:GetListViewItemUID(listViewId, itemId, uiConstants.skinNameItem)
+        UI:SetText({nameItem}, itemData.name)
+        printEz("skinListSetCallback", listViewId, itemId, MiscService:Table2JsonStr(itemData), nameItem)
+    end
+    UI:SetListViewItemSetCall(skinGrid, skinListSetCallback)
+    local skinListChangeCallback = function(listViewId, itemId, itemData, value)
+        printEz("skinListChangeCallback", MiscService:Table2JsonStr(itemData), value)
+        if value then
+            cfgTetris.skinName = itemData.name
+        end
+    end
+    UI:SetListViewItemSelectionChangeCall(skinGrid, skinListChangeCallback)
+    printEz("InitUI", MiscService:Table2JsonStr(idList), UI:GetUIName(skinGrid))
 end
