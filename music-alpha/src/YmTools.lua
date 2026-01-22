@@ -16,7 +16,7 @@ ObjGroups = {Element=0, MotionUnit=2}
 CfgTools = {MotionUnit={Types={Pos=1, Scale=3, Rotate=5}}}
 local toolIdPools = {}
 toolCommonCfgs = {serverPlayerId = -1}
-local toolCommonVars = {idPoolNames={motionId="motionId"}, names={commonMotion="commonMotion"}}
+local toolCommonVars = {idPoolNames={motionId="motionId"}, names={commonMotion="commonMotion", commonPool="commonPool"}}
 
 local timerTaskState = {groupName = {taskName = {initTs=0, initDelay=0, delay=3, lastRunTs=0, count=0, active=true, func=nil}}}
 -- local testStates = {{idle={startTs=12345, endTs=27382}}, {move={startTs=12345, endTs=27382}}}
@@ -542,11 +542,12 @@ function UpdateAllObjects(deltaTime)
     local removeIds = {}
     for id, obj in pairs(objectsAio) do
         if not obj.active then
+            printEz("UpdateAllObjects remove", MiscService:Table2JsonStr(obj))
             table.insert(removeIds, id)
         end
     end
     for index, value in ipairs(removeIds) do
-        print("remove unactive object ", value)
+        printEz("remove unactive object ", value)
         objectsAio[value] = nil
     end
     -- check active
@@ -1569,6 +1570,22 @@ function GetIdFromPoolStringfy(poolName, startNum, incNum, poolSize, poolObj)
     return Stringfy(GetIdFromPool(poolName, startNum, incNum, poolSize, poolObj))
 end
 
+function GetIdFromPoolStringfyEz(name)
+    return JoinStrings(name, "-", GetIdFromPoolEz())
+end
+
+function GetIdFromPoolEz()
+    return GetIdFromPool(toolCommonVars.names.commonPool, 0, 1, 10, nil)
+end
+
+function JoinStrings(...)
+    local res = ""
+    for index, value in ipairs({...}) do
+        res = res .. tostring(value)
+    end
+    return res
+end
+
 --从id池中拿取
 function GetIdFromPool(poolName, startNum, incNum, poolSize, poolObj)
     local pool = toolIdPools[poolName]
@@ -1768,10 +1785,47 @@ function printEz(...)
     print(res)
 end
 
-function tableShuffle(tbl)
+function TableShuffle(tbl)
     for i = #tbl, 2, -1 do
         local j = math.random(1, i)
         tbl[i], tbl[j] = tbl[j], tbl[i]
     end
     return tbl
+end
+
+function NewRect(x1, x2, y1, y2)
+    return {x1=x1, x2=x2, y1=y1, y2=y2}
+end
+
+function NewRectByCenter(x, y, width, height)
+    return NewRect(x - width / 2, x + width / 2, y - height / 2, y + height / 2)
+end
+
+function NewRectByLeftBottom(x, y, width, height)
+    return NewRect(x, x + width, y, y + height)
+end
+
+function GetRectCenter(rect)
+    return {x = rect.x1 + (rect.x2 - rect.x1) / 2, y = rect.y1 + (rect.y2 - rect.y1) / 2}
+end
+
+--保证相机可视矩形区域 centerToVecFunc({x=a, y=b}) -> Vector矩形中心转坐标
+function EnsureCameraRect(rect, centerToVecFunc)
+    if rect.x1 > rect.x2 or rect.y1 > rect.y2 then
+        printEz("EnsureCameraRect error rect")
+        return
+    end
+    local pos = centerToVecFunc(GetRectCenter(rect))
+    Camera:SetPosition(VectorEnsure(pos))
+    local uiSize = UI:GetUISize()
+    local w = rect.x2 - rect.x1
+    local h = rect.y2 - rect.y1
+    --确保横向
+    local ensureW = w
+    --确保纵向,也就是屏幕垂直方向正好放下纵向,计算这时候的宽度 (w/h)=(x/y) w=h(x/y)
+    local ensureH = h * (uiSize.X / uiSize.Y)
+    local width = math.max(ensureW, ensureH)
+    -- printEz("EnsureCameraRect", pos, width)
+    Camera:SetOrthographicWidth(width)
+    return width
 end

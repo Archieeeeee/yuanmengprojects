@@ -5,7 +5,7 @@ local platformId = 229
 local msgIdBlockState = 100115
 posOrg = Engine.Vector(0, 0, 0)
 
-local typeObjs = {boss = 1000, blockUnknown=101, brick=103, tetrisBlock=2001, dropEffect=2003}
+local typeObjs = {boss = 1000, blockUnknown=101, brick=103, tetrisBlock=2001, dropEffect=2003, commonObj=3001}
 local cfgAirWallId = 1105000000000074
 local cfgElements = {}
 local protos = {}
@@ -42,8 +42,9 @@ local testObj = {id=0, texts={}, delays={}}
 local constantTetris = {matchActions={StartTetrisMatchClient="StartTetrisMatchClient", NewTetrisMatchData="NewTetrisMatchData", MergeTetrisBlockResOnClient="MergeTetrisBlockResOnClient"},
     genBlockStratTypes={Seven="Seven", Thirteen="Thirteen", RandomEach="RandomEach"}}
 local uiConstants = {skinMenu=104701, skinGrid=104998, skinList=104705, skinItem=105198, skinNameItem=105043,
- mainMenu={id=105202, restartGame=105293, camPlus=105404, camMinus=105405, camText=105406}}
-local uiStates = {mainMenu=false, skinMenu=false}
+ mainMenu={id=105202, restartGame=105293, camPlus=105404, camMinus=105405, camText=105406, rotateScreen=105561},
+ controlLeft={id=104702}}
+local uiStates = {mainMenu=false, skinMenu=false, isVertical=false}
 local blockSkins = {}
 
 
@@ -295,7 +296,7 @@ function GenTetrisDropBlockDataSideGroup(cfg, match, playerId, genGroup)
         for i = 1, 7, 1 do
             table.insert(cfg.types, i)
         end
-        tableShuffle(cfg.types)
+        TableShuffle(cfg.types)
         printEz("GenTetrisDropBlockDataSideGroup", MiscService:Table2JsonStr(cfg.types))
         for i = 1, 7, 1 do
             local newBlock = GenTetrisDropBlockDataSideSingle(cfg, match, playerId, genGroup, i)
@@ -660,6 +661,7 @@ end
 
 function SyncTetrisMatchDataNewMatch(action)
     tetrisMatchsLocal[action.match.id] = action.match
+    tetrisDataLocal.curMatch = action.match
     --创建localData
     local board = action.match.board
     for index, rowVal in ipairs(board.parts) do
@@ -1140,25 +1142,14 @@ function SetTetrisCameraWatchBoard(match)
     -- if 1 == 1 then
     --     return
     -- end
-    
-    -- if 1 == 1 then
-    --     return
-    -- end
-    
-    local board = match.board
-    local useVertical = true
-    useVertical = false
-
     Camera:SetOrthographic(true)
+    local board = match.board
     SetCameraSize(board)
     
-    
-    local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * board.colNum / 2, 2000, cfgTetris.blockSize * board.rowNum / 2)
-    -- local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * board.colNum / 2, 2000, cfgTetris.blockSize * board.rowNum)
-    if useVertical then
-        -- posTab = VectorTablePlus(posTab, 0, 0, -500)
-    end
-    Camera:SetPosition(VectorFromTable(posTab))
+    -- local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * board.colNum / 2, 2000, cfgTetris.blockSize * board.rowNum / 2)
+    -- posTab = VectorTablePlus(posTab, 0, 0, -cfgTetris.blockSize)
+    -- -- local posTab = VectorTablePlus(board.boardPosTab, cfgTetris.blockSize * board.colNum / 2, 2000, cfgTetris.blockSize * board.rowNum)
+    -- Camera:SetPosition(VectorFromTable(posTab))
     Camera:SetCameraFOV(100)
     -- Camera:SetProperty(Camera.PROPERTY.MinPitch, 0)
     -- Camera:SetProperty(Camera.PROPERTY.MaxPitch, 0)
@@ -1172,23 +1163,36 @@ function SetTetrisCameraWatchBoard(match)
     -- SkyBox:SetDirectionalLightYaw(-90)
     -- SkyBox:SetSkyBoxRotation(90)
 
-    if useVertical then
-        Setting:SwitchToVerticalScreen(true)
+end
+
+function RotateScreen()
+    uiStates.isVertical = (not uiStates.isVertical)
+    Setting:SwitchToVerticalScreen(uiStates.isVertical)
+    local func = function ()
+        local match = tetrisDataLocal.curMatch
+        if match then
+            SetCameraSize(match.board)
+        end
     end
+    local obj = AddNewObj(0, typeObjs.commonObj, GetIdFromPoolStringfyEz("SwitchToVertical"), 0.1, func, 3, nil)
 end
 
 function SetCameraSize(board)
+    --左边操控区域宽度
+    local leftControlWidth = 400
+    local left = board.boardPosTab.x - leftControlWidth
+    local bottom = board.boardPosTab.z - cfgTetris.blockSize
+    local width = cfgTetris.blockSize * (board.colNum + 5) + leftControlWidth
+    local height = cfgTetris.blockSize * (board.rowNum + 3)
+    local rect = NewRectByLeftBottom(left, bottom, width, height)
+    local rectToPos = function (pair)
+        return Engine.Vector(pair.x, board.boardPosTab.y + 2000, pair.y - cfgTetris.blockSize)
+    end
+    EnsureCameraRect(rect, rectToPos)
+    --操控区域
     local uiSize = UI:GetUISize()
-    printEz("SetCameraSize", MiscService:Table2JsonStr(uiSize))
-    local camWidth = cfgTetris.blockSize * board.rowNum
-    camWidth = uiSize.X / uiSize.Y * camWidth
-    uiStates.camWidth = camWidth
-    Camera:SetOrthographicWidth(uiStates.camWidth)
-    -- if useVertical then
-    --     Camera:SetOrthographicWidth(cfgTetris.blockSize * board.rowNum)
-    -- else
-    --     Camera:SetOrthographicWidth(cfgTetris.blockSize * board.rowNum * 2)
-    -- end
+    -- printEz("SetCameraSize control", MiscService:Table2JsonStr(UI:GetPosition(uiConstants.controlLeft.id)) )
+    UI:SetPosition({uiConstants.controlLeft.id}, -uiSize.X/2 + 50, uiSize.Y/2 - UI:GetSize(uiConstants.controlLeft.id).Y - 50)
 end
 
 function SetCameraSizeUpdate(diff)
@@ -2970,6 +2974,8 @@ function ButtonPressed(item)
         SetCameraSizeUpdate(100)
     elseif item == uiConstants.mainMenu.camMinus then
         SetCameraSizeUpdate(-100)
+    elseif item == uiConstants.mainMenu.rotateScreen then
+        RotateScreen()
     else
         -- TestRotateBlock()      
     end
