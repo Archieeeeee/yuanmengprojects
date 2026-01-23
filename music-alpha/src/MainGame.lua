@@ -37,14 +37,17 @@ local tetrisMatchs = {}
 --从远端同步的数据和自身数据,并不是对局数据集
 local tetrisMatchsLocal = {}
 local varPool = {mergeActions={}}
-local tetrisDataLocal = {blockProtos={itself={}, preview={}}}
+local tetrisDataServer = {rooms={}}
+local tetrisDataLocal = {blockProtos={itself={}, preview={}}, rooms={}}
 local testObj = {id=0, texts={}, delays={}}
 local constantTetris = {matchActions={StartTetrisMatchClient="StartTetrisMatchClient", NewTetrisMatchData="NewTetrisMatchData", MergeTetrisBlockResOnClient="MergeTetrisBlockResOnClient"},
     genBlockStratTypes={Seven="Seven", Thirteen="Thirteen", RandomEach="RandomEach"}}
 local uiConstants = {skinMenu=104701, skinGrid=104998, skinList=104705, skinItem=105198, skinNameItem=105043,
- mainMenu={id=105202, restartGame=105293, camPlus=105404, camMinus=105405, camText=105406, rotateScreen=105561},
+ mainMenu={id=105202, restartGame=105293, camPlus=105404, camMinus=105405, camText=105406, rotateScreen=105561, roomMenu=105576},
+ roomPanel={id=105566, newRoom=105568, close=105567, roomList=105569}, singleRoom={id=105563, playerGrid=105564, roomName=105562},
+ singleRoomPlayer={id=105575, playerName=105574},
  controlLeft={id=104702}}
-local uiStates = {mainMenu=false, skinMenu=false, isVertical=false}
+local uiStates = {mainMenu=false, skinMenu=false, isVertical=false, showRoomPanel=false}
 local blockSkins = {}
 
 
@@ -2976,10 +2979,66 @@ function ButtonPressed(item)
         SetCameraSizeUpdate(-100)
     elseif item == uiConstants.mainMenu.rotateScreen then
         RotateScreen()
+    elseif item == uiConstants.mainMenu.roomMenu or item == uiConstants.roomPanel.close then
+        SwitchUIShow(uiStates, "showRoomPanel", uiConstants.roomPanel.id)
+    elseif item == uiConstants.roomPanel.newRoom then
+        RequestNewRoom()
     else
         -- TestRotateBlock()      
     end
     
+end
+
+function RequestNewRoom()
+    PushActionToServer(false, "HandleRequestNewRoom", {playerId=GetLocalPlayerIdString(), name=Chat:GetCustomName(GetLocalPlayerId())})
+end
+
+function HandleRequestNewRoom(obj)
+    local roomData = {id=GetIdFromPoolStringfyEz(nil), players={}}
+    tetrisDataServer.rooms[roomData.id] = roomData
+    roomData.players[obj.playerId] = {name=obj.name}
+    PushActionToClients(false, "NotifyNewRoom", {room=roomData})
+end
+
+function NotifyNewRoom(obj)
+    local room = obj.room
+    printEz("NotifyNewRoom", MiscService:Table2JsonStr(room))
+    tetrisDataLocal.rooms[room.id] = room
+    --房间列表添加房间
+    UI:SetVisibility({uiConstants.singleRoom.id}, true)
+    UI:SetVisibility({uiConstants.singleRoom.id}, false)
+    local singleRoom = CopyTableShallow(uiConstants.singleRoom)
+    local sRoomPos = UI:GetPosition(uiConstants.singleRoom.id)
+    local sRoomUI = UI:DuplicateWidget(uiConstants.singleRoom.id, 0, 0)
+    singleRoom.id = sRoomUI
+    singleRoom.roomName = UI:GetAllChildren(sRoomUI)[1]
+    printEz("NotifyNewRoom singleRoom", MiscService:Table2JsonStr(singleRoom), UI:GetUIName(singleRoom.roomName), MiscService:Table2JsonStr(UI:GetPosition(singleRoom.id)) )
+    UI:SetVisibility({uiConstants.roomPanel.roomList}, true)
+    UI:SetText({singleRoom.roomName}, room.id)
+    printEz("NotifyNewRoom text", UI:GetText(singleRoom.roomName))
+    UI:SetVisibility({singleRoom.id}, true)
+    UI:AddToScrollView(uiConstants.roomPanel.roomList, {singleRoom.id})
+    --房间添加玩家
+    UI:SetVisibility({singleRoom.playerGrid}, true)
+    UI:SetVisibility({singleRoom.playerGrid}, false)
+    local players = {}
+    for key, value in pairs(room.players) do
+        table.insert(players, value)
+    end
+    UI:InitListView(singleRoom.playerGrid, players)
+    local listSetCall = function (listViewId, itemId, itemData)
+        local nameItem = UI:GetListViewItemUID(listViewId, itemId, uiConstants.singleRoomPlayer.playerName)
+        UI:SetText({nameItem}, itemData.name)
+        printEz("listSetCall", listViewId, itemId, MiscService:Table2JsonStr(itemData), nameItem)
+    end
+    UI:SetListViewItemSetCall(singleRoom.playerGrid, listSetCall)
+
+    UI:SetVisibility({singleRoom.playerGrid}, true)
+end
+
+function SwitchUIShow(data, varName, uid)
+    data[varName] = (not data[varName])
+    UI:SetVisibility({uid}, data[varName])
 end
 
 function RequestRestartMatch()

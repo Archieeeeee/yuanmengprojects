@@ -1571,7 +1571,10 @@ function GetIdFromPoolStringfy(poolName, startNum, incNum, poolSize, poolObj)
 end
 
 function GetIdFromPoolStringfyEz(name)
-    return JoinStrings(name, "-", GetIdFromPoolEz())
+    if name then
+        return JoinStrings(name, "-", GetIdFromPoolEz())
+    end
+    return tostring(GetIdFromPoolEz())
 end
 
 function GetIdFromPoolEz()
