@@ -1,9 +1,10 @@
 
 require("YmMusicTools")
 require("YmDataTable")
+require("YmUtils")
 
 local ModObjectManager = require("ObjectManager")
-ObjectPool = ModObjectManager.ObjectManager:new()
+ObjPool = ModObjectManager.ObjectManager:new()
 Object = ModObjectManager.Object
 ObjState = ModObjectManager.ObjState
 TimeCfg = ModObjectManager.TimeCfg
@@ -1668,17 +1669,6 @@ function CanRunOnce(obj, name)
     return true
 end
 
-function EnsureTableValue(tab, ...)
-    local keys = {...}
-    local parent = tab
-    for index, key in ipairs(keys) do
-        if parent[key] == nil then
-            parent[key] = {}
-        end
-        parent = parent[key]
-    end
-    return parent
-end
 
 --深度拷贝
 function CopyTableShallow(obj)
@@ -1786,14 +1776,7 @@ function MergeTables(remoteTable, localTable, preserveKeys)
     return MergeTablesHandle(remoteTable, localTable, keyMap)
 end
 
-function printEz(...)
-    local args = {...}
-    local res = string.format("%s ", GetGameTimeCur())
-    for index, value in ipairs(args) do
-        res = string.format("%s %s", res, value)
-    end
-    print(res)
-end
+
 
 function TableShuffle(tbl)
     for i = #tbl, 2, -1 do
