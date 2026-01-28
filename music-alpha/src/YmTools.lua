@@ -3,7 +3,7 @@ require("YmMusicTools")
 require("YmDataTable")
 
 local ModObjectManager = require("ObjectManager")
-ObjectManager = ModObjectManager.ObjectManager
+ObjectPool = ModObjectManager.ObjectManager:new()
 Object = ModObjectManager.Object
 ObjState = ModObjectManager.ObjState
 TimeCfg = ModObjectManager.TimeCfg
