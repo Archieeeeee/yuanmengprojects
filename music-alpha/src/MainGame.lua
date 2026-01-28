@@ -105,6 +105,7 @@ end
 
 function PostInitClientOnStart()
     -- TimerManager:AddLoopTimer(6, DoTestQuest)
+    TimerManager:AddTimer(5, DoTest)
 end
 
 function PostInitServerOnStart()
@@ -2918,15 +2919,21 @@ function DoTest()
     -- if 1 == 1 then
     --     return
     -- end
-    local obja = {3, "aaa", [5]=888, m=3, ab={3,89}, as={3, {2, 1, 0}}, atp={a=3, ab="hhsdq", c={2, "ss"}}}
-    local objb = {3, "aaa", [5]=888, m="dqk2888", ab={3,89}, as={3, {2, 1, 0}}, atp={a=3, ab="akdhk2", c={2, "ss"}}}
-    local objaCopy = MergeTables(obja, objb, {"ab"})
-    print("DoTest 1")
-    Log:PrintTable(objaCopy)
-    objaCopy = MergeTables(obja, objb, {"m", "ab"})
-    print("DoTest 2")
-    Log:PrintTable(objaCopy)
+    -- local obja = {3, "aaa", [5]=888, m=3, ab={3,89}, as={3, {2, 1, 0}}, atp={a=3, ab="hhsdq", c={2, "ss"}}}
+    -- local objb = {3, "aaa", [5]=888, m="dqk2888", ab={3,89}, as={3, {2, 1, 0}}, atp={a=3, ab="akdhk2", c={2, "ss"}}}
+    -- local objaCopy = MergeTables(obja, objb, {"ab"})
+    -- print("DoTest 1")
+    -- Log:PrintTable(objaCopy)
+    -- objaCopy = MergeTables(obja, objb, {"m", "ab"})
+    -- print("DoTest 2")
+    -- Log:PrintTable(objaCopy)
 
+    local obj = Object:new("a", 2 ,3):AddState("mm", nil, nil)
+    printEz("ObjectObject", obj.id, MiscService:Table2JsonStr(obj.states))
+    Log:PrintTable(obj)
+    local objxx = Object:new("asad", 22 ,3213):AddState("sd121xx", nil, nil)
+    printEz("ObjectObjectaaa", obj.id, MiscService:Table2JsonStr(obj.states))
+    printEz("ObjectObjectccc", objxx.id, MiscService:Table2JsonStr(objxx.states))
 end
 
 function DoTestQuest()

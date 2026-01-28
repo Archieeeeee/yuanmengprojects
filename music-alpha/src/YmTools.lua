@@ -2,6 +2,13 @@
 require("YmMusicTools")
 require("YmDataTable")
 
+local ModObjectManager = require("ObjectManager")
+ObjectManager = ModObjectManager.ObjectManager
+Object = ModObjectManager.Object
+ObjState = ModObjectManager.ObjState
+TimeCfg = ModObjectManager.TimeCfg
+FuncCfg = ModObjectManager.FuncCfg
+
 --游戏运行时间,如果游戏暂停了这个时间不会增加
 local RunningTime = 0
 MsgIds = {commonAction=100244}
