@@ -5,10 +5,11 @@ require("YmUtils")
 
 local ModObjectManager = require("ObjectManager")
 ObjPool = ModObjectManager.ObjectManager:new()
-Object = ModObjectManager.Object
+-- Object = ModObjectManager.Object
 ObjState = ModObjectManager.ObjState
 TimeCfg = ModObjectManager.TimeCfg
 FuncCfg = ModObjectManager.FuncCfg
+StateMachineTime = ModObjectManager.StateMachineTime
 
 --游戏运行时间,如果游戏暂停了这个时间不会增加
 local RunningTime = 0
@@ -402,6 +403,8 @@ function OnUpdateFrame()
     --delta ready
     UpdateAllObjects(GetUpdateDeltaTime())
     CheckAllObjStates(state.deltaTime)
+
+    ObjPool:update(state.deltaTime)
 end
 
 function InitTimeState()
