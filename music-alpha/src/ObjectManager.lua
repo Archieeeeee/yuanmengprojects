@@ -56,6 +56,8 @@ end
 ---@field startTs number?
 ---@field endTs number?
 ---@field name string
+---@field valid boolean
+---@field stateMachinesActioned table<string, any>
 local ObjState = {name="", timeCfg=nil, funcCfg=nil, count=0}
 ObjState.__index = ObjState
 
@@ -65,7 +67,13 @@ ObjState.__index = ObjState
 function ObjState:new(name)
     local res = setmetatable({startTs=0, endTs=0, actionTs=0, totalDelta=0, cycleDelta=0, actionDelta=0, cycleStartTs=0, cycleEndTs=0}, ObjState)
     res.name = name
+    res.stateMachinesActioned = {}
     return res
+end
+
+function ObjState:setValid(valid)
+    self.valid = valid
+    return self
 end
 
 --设置时间参数
@@ -82,8 +90,14 @@ function ObjState:setFunc(funcCfg)
     return self
 end
 
+function ObjState:resetStateMachineRecord()
+    self.stateMachinesActioned = {}
+end
+
 function ObjState:start(deltaTime, obj)
     local cs = self
+    self:setValid(true)
+    self:resetStateMachineRecord()
     if cs.startTs == 0 then
         cs.startTs = GetGameTimeCur()
         cs.totalDelta = 0
@@ -151,7 +165,25 @@ function ObjState:update(deltaTime, obj)
     cs.cycleDelta = cs.cycleDelta + deltaTime
 end
 
+---清除状态机缓存
+---@param smName string
+function ObjState:addStateMachineRecord(smName)
+    self.stateMachinesActioned[smName] = true
+end
+
+function ObjState:isStateMachineActioned(smName)
+    return self.stateMachinesActioned[smName] ~= nil
+end
+
+function ObjState:isStarted()
+    return self.startTs > 0
+end
+
 function ObjState:endState(obj, deltaTime)
+    --防止重复调用
+    if self.endTs ~= 0 then
+        return
+    end
     self.endTs = GetGameTimeCur()
     self.cycleEndTs = GetGameTimeCur()
     if self.funcCfg and self.funcCfg.endFunc then
@@ -181,17 +213,22 @@ end
 ---@class StateMachine
 ---@field state ObjState
 ---@field nextState ObjState
+---@field name string
 ---@field conditionFunc fun(state:ObjState, nextState:ObjState, deltaTime:number, obj: Object):boolean
+---@field numLimit number
+---@field count number
+---@field valid boolean
 local StateMachine = {}
 StateMachine.__index = StateMachine
 
 ---创建状态机
 ---@param state ObjState
 ---@param nextState ObjState
+---@param numLimit number 次数限制,一般情况为1
 ---@param conditionFunc fun(state:ObjState, nextState:ObjState, deltaTime:number, obj: Object):boolean
 ---@return StateMachine
-function StateMachine:new(state, nextState, conditionFunc)
-    local res = setmetatable({}, StateMachine)
+function StateMachine:new(name, state, nextState, numLimit, conditionFunc)
+    local res = setmetatable({name=name, numLimit=numLimit, count=0, valid=true}, StateMachine)
     res.state = state
     res.nextState = nextState
     res.conditionFunc = conditionFunc
@@ -202,9 +239,23 @@ end
 ---@param deltaTime any
 ---@param obj Object
 function StateMachine:update(deltaTime, obj)
+    if self.state:isStateMachineActioned(self.name) then
+        return
+    end
+    if not self.state:isStarted() then
+        return
+    end
     if self.conditionFunc(self.state, self.nextState, deltaTime, obj) then
-        self.state:endState(obj, deltaTime)
+        printEz("conditionFuncok", self.name, self.count)
+        self.count = self.count + 1
+        self.state:addStateMachineRecord(self.name)
+        self.state:setValid(false)
+        -- self.state:endState(obj, deltaTime)
+        -- self.nextState:setValid(true)
         self.nextState:start(deltaTime, obj)
+        if self.numLimit > 0 and self.count >= self.numLimit then
+            self.valid = false
+        end
     end
 end
 
@@ -215,8 +266,8 @@ end
 
 local StateMachineTime = {}
 
-function StateMachineTime:new(state, nextState)
-    local sm = StateMachine:new(state, nextState, function(stateA, nextStateA, deltaTime, obj)
+function StateMachineTime:new(name, state, nextState, numLimit)
+    local sm = StateMachine:new(name, state, nextState, numLimit, function(stateA, nextStateA, deltaTime, obj)
         if stateA.timeCfg ~= nil then
             return stateA.cycleEndTs > 0
         end
@@ -274,12 +325,16 @@ function Object:update(deltaTime)
     end
     --更新状态
     for key, state in pairs(self.states) do
-        state:update(deltaTime, self)
+        if state.valid then
+            state:update(deltaTime, self)
+        end
     end
     --更新状态机
     for key, sm in pairs(self.stateMachines) do
-        printEz("updatestateMachines", sm.state.name)
-        sm:update(deltaTime, self)
+        if sm.valid then
+            printEz("updatestateMachines", sm.state.name)
+            sm:update(deltaTime, self)
+        end
     end
 end
 
@@ -291,10 +346,9 @@ end
 
 ---添加状态机
 ---@param sm StateMachine
----@param name string
 ---@return Object
-function Object:addStateMachine(sm, name)
-    self.stateMachines[name] = sm
+function Object:addStateMachine(sm)
+    self.stateMachines[sm.name] = sm
     return self
 end
 
@@ -303,7 +357,6 @@ end
 ---@return Object
 function Object:addState(state)
     self.states[state.name] = state
-    state:start(0, self)
     return self
 end
 
@@ -314,7 +367,6 @@ end
 ---@return Object
 function Object:addStateFull(name, timeCfg, funcCfg)
     local state = ObjState:new(name):setTimeCfg(timeCfg):setFunc(funcCfg)
-    state:start(0, self)
     self.states[name] = state
     return self
 end
